@@ -1,154 +1,174 @@
 #!/bin/bash
 
 ###
-### SIGedge
+### build_ka9q-radio.sh
 ###
-### build_ka9q-radio
+### Standalone ka9q-radio build script for a fresh Ubuntu 24.04 LTS host.
 ###
+### This script:
+###   - Verifies Ubuntu 24.04 LTS
+###   - Verifies sudo access
+###   - Installs build dependencies
+###   - Clones a clean ka9q-radio source tree
+###   - Checks out the requested branch/tag/commit
+###   - Records the exact Git commit used
+###   - Builds ka9q-radio with RX-888, HackRF, and RTL-SDR enabled
+###   - Writes build provenance to ka9q-radio.buildinfo
 ###
-### 20260828-1617
+### It does NOT install ka9q-radio, modify systemd, or create radio configs.
 ###
-### Build ka9q-radio from source and record the exact Git commit.
+### Usage:
+###   chmod +x build_ka9q-radio.sh
+###   ./build_ka9q-radio.sh
 ###
-### This script may be executed directly or sourced by a parent SIGedge script.
+### Optional environment variables:
 ###
-### Expected parent environment:
-###   SIGEDGE_SOURCE
+###   KA9Q_REPO
+###       Default: https://github.com/ka9q/ka9q-radio.git
 ###
-### Optional environment:
-###   KA9Q_REPO       Git repository URL
-###   KA9Q_REF        Branch, tag, or commit to build
-###   KA9Q_BUILD_JOBS Parallel build jobs
+###   KA9Q_REF
+###       Branch, tag, or commit to build.
+###       Default: main
 ###
-### Defaults:
-###   KA9Q_REPO=https://github.com/ka9q/ka9q-radio.git
-###   KA9Q_REF=main
-###   KA9Q_BUILD_JOBS=$(nproc)
+###   KA9Q_WORKDIR
+###       Parent directory for the source tree and build metadata.
+###       Default: $HOME/ka9q-build
+###
+###   KA9Q_BUILD_JOBS
+###       Parallel make jobs.
+###       Default: number of online processors
 ###
 
-# SIGedge directory tree
-SIGEDGE_ENV_FILE="$(readlink -f "${BASH_SOURCE[0]}")"
-SIGEDGE_HOME="$(cd -- "$(dirname -- "$SIGEDGE_ENV_FILE")/.." && pwd)"
-SIGEDGE_ROOT=$SIGEDGE_HOME
-SIGEDGE_SOURCE=$SIGEDGE_ROOT/source
-SIGEDGE_ETC=$SIGEDGE_ROOT/etc
-SIGEDGE_CONFIG=$SIGEDGE_ROOT/config
-SIGEDGE_DEVICES=$SIGEDGE_HOME/devices
-SIGEDGE_SCRIPTS=$SIGEDGE_HOME/scripts
-SIGEDGE_PACKAGES=$SIGEDGE_HOME/packages
-SIGEDGE_DEBS=$SIGEDGE_HOME/debs
-
-# SIGedge install support files
-SIGEDGE_INSTALLED=$SIGEDGE_ETC/INSTALLED_PKGS
-SIGEDGE_PKGLIST=$SIGEDGE_PACKAGES/PACKAGES
-SIGEDGE_INSTALLED_DEVICES=$SIGEDGE_ETC/INSTALLED_DEVICES
-SIGEDGE_DEVLIST=$SIGEDGE_DEVICES/DEVICES
-SIGEDGE_SCREEN_STANDARD=$SIGEDGE_SCRIPTS/screen_standard_setup
-SIGEDGE_SCREEN_SERVER=$SIGEDGE_SCRIPTS/screen_server_setup
-SIGEDGE_BANNER_COLOR="\e[0;104m\e[K"   # blue
-SIGEDGE_BANNER_RESET="\e[0m"
-
-# Detect architecture (x86_64, ARMv8)
-SIGEDGE_HWARCH=`lscpu|grep Architecture|awk '{print $2}'`
-# Detect Operating system (Debian GNU/Linux 13 (Trixie) or Ubuntu 24.04 LTS)
-SIGEDGE_OSNAME=`cat /etc/os-release|grep "PRETTY_NAME"|awk -F'"' '{print $2}'`
-# Is Platform good for install- true or false - we start with false
-SIGEDGE_CERTIFIED="false"
-# What is the IP Address
-SIGEDGE_IPADDR=`ip -br address | grep UP | awk '{print $1}'`
+set -euo pipefail
 
 KA9Q_REPO="${KA9Q_REPO:-https://github.com/ka9q/ka9q-radio.git}"
 KA9Q_REF="${KA9Q_REF:-main}"
+KA9Q_COMMIT="69ed6ff"
+KA9Q_WORKDIR="${KA9Q_WORKDIR:-$HOME/source/ka9q-build}"
 KA9Q_BUILD_JOBS="${KA9Q_BUILD_JOBS:-$(nproc)}"
 
-if [[ -n "${SIGEDGE_SOURCE:-}" ]]; then
-    KA9Q_SOURCE_ROOT="$SIGEDGE_SOURCE"
-else
-    KA9Q_SOURCE_ROOT="$(pwd)"
+KA9Q_SOURCE_DIR="${KA9Q_WORKDIR}/ka9q-radio"
+KA9Q_BUILDINFO="${KA9Q_WORKDIR}/ka9q-radio.buildinfo"
+
+error()
+{
+    echo
+    echo "ERROR: $*" >&2
+    echo
+    exit 1
+}
+
+banner()
+{
+    echo
+    echo "============================================================"
+    echo "$*"
+    echo "============================================================"
+    echo
+}
+
+banner "ka9q-radio Ubuntu 24.04 source build"
+
+### VERIFY OPERATING SYSTEM
+
+if [[ ! -r /etc/os-release ]]; then
+    error "/etc/os-release was not found"
 fi
 
-KA9Q_SOURCE_DIR="${KA9Q_SOURCE_ROOT}/ka9q-radio"
-KA9Q_BUILDINFO="${KA9Q_SOURCE_ROOT}/ka9q-radio.buildinfo"
+# shellcheck disable=SC1091
+source /etc/os-release
 
-ka9q_build_return()
-{
-    local rc="$1"
+if [[ "${ID:-}" != "ubuntu" ]]; then
+    error "This script requires Ubuntu. Detected: ${PRETTY_NAME:-unknown}"
+fi
 
-    if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
-        return "$rc"
-    fi
+if [[ "${VERSION_ID:-}" != "24.04" ]]; then
+    error "This script targets Ubuntu 24.04 LTS. Detected: ${VERSION_ID:-unknown}"
+fi
 
-    exit "$rc"
-}
+echo "Operating system : ${PRETTY_NAME}"
+echo "Architecture     : $(uname -m)"
+echo "Build directory  : ${KA9Q_WORKDIR}"
+echo "Requested ref    : ${KA9Q_REF}"
 
-ka9q_build_error()
-{
-    echo -e "${SIGEDGE_BANNER_COLOR:-}"
-    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: $*"
-    echo -e "${SIGEDGE_BANNER_RESET:-}"
-}
+### VERIFY SUDO
 
-echo -e "${SIGEDGE_BANNER_COLOR:-}"
-echo -e "${SIGEDGE_BANNER_COLOR:-} ##  build : ka9q-radio"
-echo -e "${SIGEDGE_BANNER_RESET:-}"
+if ! command -v sudo >/dev/null 2>&1; then
+    error "sudo is required"
+fi
 
-### DEPENDENCY CHECK
+sudo -v || error "sudo privileges are required"
 
-for cmd in git make gcc; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        ka9q_build_error "Required command not found: $cmd"
-        ka9q_build_return 1
-    fi
-done
+### INSTALL BUILD DEPENDENCIES
 
-### SOURCE
+banner "Installing build dependencies"
 
-mkdir -p "$KA9Q_SOURCE_ROOT" || {
-    ka9q_build_error "Unable to create source directory: $KA9Q_SOURCE_ROOT"
-    ka9q_build_return 1
-}
+sudo apt-get update
 
-if [[ -d "${KA9Q_SOURCE_DIR}/.git" ]]; then
-    echo "Updating existing ka9q-radio source tree"
-    git -C "$KA9Q_SOURCE_DIR" fetch --all --tags --prune || {
-        ka9q_build_error "Unable to update ka9q-radio repository"
-        ka9q_build_return 1
-    }
-else
-    echo "Cloning ka9q-radio"
+sudo apt-get install -y \
+    ca-certificates \
+    git \
+    build-essential \
+    pkg-config \
+    rsync \
+    avahi-daemon \
+    avahi-utils \
+    libavahi-client-dev \
+    libbsd-dev \
+    libfftw3-dev \
+    libiniparser-dev \
+    libncurses-dev \
+    libncursesw5-dev \
+    libopus-dev \
+    libogg-dev \
+    libsamplerate0-dev \
+    libliquid-dev \
+    portaudio19-dev \
+    libasound2-dev \
+    uuid-dev \
+    libusb-1.0-0-dev \
+    libusb-dev \
+    libhackrf-dev \
+    hackrf \
+    librtlsdr-dev \
+    rtl-sdr
+
+### CREATE A CLEAN SOURCE TREE
+
+banner "Preparing clean ka9q-radio source tree"
+
+mkdir -p "$KA9Q_WORKDIR"
+
+if [[ -e "$KA9Q_SOURCE_DIR" ]]; then
+    echo "Removing previous source tree:"
+    echo "  $KA9Q_SOURCE_DIR"
     rm -rf "$KA9Q_SOURCE_DIR"
-    git clone "$KA9Q_REPO" "$KA9Q_SOURCE_DIR" || {
-        ka9q_build_error "Unable to clone ka9q-radio"
-        ka9q_build_return 1
-    }
 fi
 
-### CHECKOUT REQUESTED REF
+echo "Cloning:"
+echo "  $KA9Q_REPO"
 
-cd "$KA9Q_SOURCE_DIR" || {
-    ka9q_build_error "Unable to enter $KA9Q_SOURCE_DIR"
-    ka9q_build_return 1
-}
+git clone "$KA9Q_REPO" "$KA9Q_SOURCE_DIR"
+cd "$KA9Q_SOURCE_DIR"
+git reset --hard "$KA9Q_COMMIT"
+
+git fetch --all --tags --prune
+
+### CHECK OUT REQUESTED REVISION
+
+echo
+echo "Checking out:"
+echo "  $KA9Q_REF"
 
 if git show-ref --verify --quiet "refs/remotes/origin/${KA9Q_REF}"; then
-    git checkout -B "$KA9Q_REF" "origin/$KA9Q_REF" || {
-        ka9q_build_error "Unable to checkout origin/$KA9Q_REF"
-        ka9q_build_return 1
-    }
+    git checkout -B "$KA9Q_REF" "origin/$KA9Q_REF"
 else
-    git checkout --detach "$KA9Q_REF" || {
-        ka9q_build_error "Unable to checkout ref: $KA9Q_REF"
-        ka9q_build_return 1
-    }
+    git checkout --detach "$KA9Q_REF"
 fi
 
-### RECORD EXACT SOURCE REVISION BEFORE BUILD
+### RECORD EXACT SOURCE REVISION
 
-KA9Q_COMMIT="$(git rev-parse HEAD)" || {
-    ka9q_build_error "Unable to determine ka9q-radio commit"
-    ka9q_build_return 1
-}
-
+KA9Q_COMMIT="$(git rev-parse HEAD)"
 KA9Q_COMMIT_SHORT="$(git rev-parse --short=12 HEAD)"
 KA9Q_COMMIT_DATE="$(git show -s --format='%cI' HEAD)"
 KA9Q_COMMIT_SUBJECT="$(git show -s --format='%s' HEAD)"
@@ -158,36 +178,15 @@ KA9Q_BUILD_HOST="$(hostname)"
 KA9Q_BUILD_ARCH="$(uname -m)"
 
 echo
-echo "ka9q-radio source revision"
+echo "Source revision"
 echo "  Repository : $KA9Q_REPO"
 echo "  Requested  : $KA9Q_REF"
 echo "  Commit     : $KA9Q_COMMIT"
 echo "  Commit date: $KA9Q_COMMIT_DATE"
-echo "  Description: $KA9Q_COMMIT_SUBJECT"
+echo "  Subject    : $KA9Q_COMMIT_SUBJECT"
 echo
 
-### BUILD
-
-echo "Cleaning previous build artifacts"
-make clean || {
-    ka9q_build_error "make clean failed"
-    ka9q_build_return 1
-}
-
-echo "Building ka9q-radio using ${KA9Q_BUILD_JOBS} parallel jobs"
-make -j"$KA9Q_BUILD_JOBS" || {
-    ka9q_build_error "ka9q-radio build failed"
-    ka9q_build_return 1
-}
-
-### VERIFY CORE BUILD OUTPUT
-
-if [[ ! -x "${KA9Q_SOURCE_DIR}/src/radiod" ]]; then
-    ka9q_build_error "Build completed but src/radiod was not found"
-    ka9q_build_return 1
-fi
-
-### WRITE BUILD METADATA
+### WRITE BUILD PROVENANCE BEFORE COMPILATION
 
 cat > "$KA9Q_BUILDINFO" <<EOF
 KA9Q_REPO="$KA9Q_REPO"
@@ -201,24 +200,72 @@ KA9Q_BUILD_DATE="$KA9Q_BUILD_DATE"
 KA9Q_BUILD_HOST="$KA9Q_BUILD_HOST"
 KA9Q_BUILD_ARCH="$KA9Q_BUILD_ARCH"
 KA9Q_SOURCE_DIR="$KA9Q_SOURCE_DIR"
+KA9Q_ENABLE_RX888="1"
+KA9Q_ENABLE_HACKRF="1"
+KA9Q_ENABLE_RTLSDR="1"
 EOF
 
-chmod 0644 "$KA9Q_BUILDINFO"
+### BUILD
 
-### SUMMARY
+banner "Building ka9q-radio"
+
+make clean
+
+make -j"$KA9Q_BUILD_JOBS" \
+    ENABLE_RX888=1 \
+    ENABLE_HACKRF=1 \
+    ENABLE_RTLSDR=1
+
+### VERIFY BUILD OUTPUT
+
+RADIOD_PATH="$(find "$KA9Q_SOURCE_DIR" -type f -name radiod -perm -111 2>/dev/null | head -1 || true)"
+
+if [[ -z "$RADIOD_PATH" ]]; then
+    error "Build completed but an executable radiod binary was not found"
+fi
+
+CONTROL_PATH="$(find "$KA9Q_SOURCE_DIR" -type f -name control -perm -111 2>/dev/null | head -1 || true)"
+MONITOR_PATH="$(find "$KA9Q_SOURCE_DIR" -type f -name monitor -perm -111 2>/dev/null | head -1 || true)"
+
+{
+    echo "KA9Q_RADIOD_PATH=\"$RADIOD_PATH\""
+    echo "KA9Q_CONTROL_PATH=\"$CONTROL_PATH\""
+    echo "KA9Q_MONITOR_PATH=\"$MONITOR_PATH\""
+} >> "$KA9Q_BUILDINFO"
+
+### REPORT SDR FRONT-END MODULES
 
 echo
-echo -e "${SIGEDGE_BANNER_COLOR:-}"
-echo -e "${SIGEDGE_BANNER_COLOR:-} ##  build : ka9q-radio - Completed"
-echo -e "${SIGEDGE_BANNER_RESET:-}"
-echo
-echo "Built from commit:"
+echo "SDR front-end modules found:"
+
+for module in rx888 hackrf rtlsdr; do
+    module_path="$(find "$KA9Q_SOURCE_DIR" -type f -name "${module}.so" 2>/dev/null | head -1 || true)"
+
+    if [[ -n "$module_path" ]]; then
+        echo "  ${module}: $module_path"
+        upper_module="$(echo "$module" | tr '[:lower:]' '[:upper:]')"
+        echo "KA9Q_${upper_module}_MODULE=\"$module_path\"" >> "$KA9Q_BUILDINFO"
+    else
+        echo "  ${module}: no standalone .so found"
+    fi
+done
+
+### FINAL SUMMARY
+
+banner "ka9q-radio build completed"
+
+echo "Built commit:"
 echo "  $KA9Q_COMMIT"
+echo
+echo "Source directory:"
+echo "  $KA9Q_SOURCE_DIR"
+echo
+echo "radiod:"
+echo "  $RADIOD_PATH"
 echo
 echo "Build metadata:"
 echo "  $KA9Q_BUILDINFO"
 echo
-echo "Core binary:"
-echo "  ${KA9Q_SOURCE_DIR}/src/radiod"
-
-ka9q_build_return 0
+echo "No files were installed outside the build directory."
+echo "No systemd services or radio configurations were changed."
+echo
