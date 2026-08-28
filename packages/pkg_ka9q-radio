@@ -6,7 +6,7 @@
 ### pkg_ka9q-radio
 ###
 ###
-### 20260828-0629
+### 20260828-1902
 ###
 ### ka9q-radio package management script
 ###
@@ -347,7 +347,22 @@ case "$ACTION" in
             return 1
         fi
 
-        mkdir -p "$SIGEDGE_DEBS"
+        mkdir -p "$SIGEDGE_DEBS" || return 1
+
+        case "${SIGEDGE_HWARCH:-}" in
+            x86_64 )
+                PACKAGE_ARCH="amd64"
+                ;;
+            aarch64 )
+                PACKAGE_ARCH="arm64"
+                ;;
+            * )
+                echo "ERROR: Unsupported SIGEDGE_HWARCH: ${SIGEDGE_HWARCH:-undefined}"
+                return 1
+                ;;
+        esac
+
+        PACKAGE_FILE="${SIGEDGE_DEBS}/ka9q-radio_current_${PACKAGE_ARCH}.deb"
 
         # checkinstall creates the ka9q-radio .deb from the upstream
         # make-install operation without installing it on this host.
@@ -356,6 +371,7 @@ case "$ACTION" in
             --fstrans=yes \
             --default \
             --pkgname=ka9q-radio \
+            --pkgarch="$PACKAGE_ARCH" \
             make install ENABLE_AIRSPY=0 \
             ENABLE_AIRSPYHF=0 \
             ENABLE_BLADERF=0 \
@@ -371,14 +387,13 @@ case "$ACTION" in
         debs=( ./*.deb )
         shopt -u nullglob
 
-        if (( ${#debs[@]} == 0 )); then
-            echo "ERROR: checkinstall did not create a Debian package"
+        if (( ${#debs[@]} != 1 )); then
+            echo "ERROR: Expected one ka9q-radio Debian package; found ${#debs[@]}"
             return 1
         fi
 
-        for deb in "${debs[@]}"; do
-            sudo mv "$deb" "$SIGEDGE_DEBS/"
-        done
+        sudo mv "${debs[0]}" "$PACKAGE_FILE" || return 1
+        echo "Created Debian package: $PACKAGE_FILE"
         ;;&
 
 
