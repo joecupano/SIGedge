@@ -64,6 +64,8 @@ cd SIGedge
 
 Setup presents device and service choices, installs the selected components, and reboots the system when complete. RTL-SDR and HackRF are the default device selections; other supported devices can be selected during setup or installed later.
 
+> **Current ka9q-radio packaging status:** the repository does not include the prebuilt ka9q-radio `.deb` files expected by the standard install action. A clean checkout must currently use the source-build path described in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) or supply the appropriate package.
+
 To add a device after initial setup:
 
 ```bash
@@ -125,4 +127,4 @@ The configuration script also accepts `rx888`, `rtlsdr`, or `all`. Set `KA9Q_IFA
 - Disable onboard Bluetooth and Wi-Fi on dedicated receive nodes when they are unnecessary and local RF emissions are a concern.
 - Size powered USB hubs and power supplies for the attached devices; do not assume every hub port can supply its maximum current simultaneously.
 
-Detailed ka9q-radio build and deployment background is available in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md). Development context for the current integration work is recorded in [HANDOFF.md](HANDOFF.md).
+Current ka9q-radio deployment instructions and implementation limitations are documented in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md). Development context for the current integration work is recorded in [HANDOFF.md](HANDOFF.md).

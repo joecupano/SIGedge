@@ -1,1078 +1,265 @@
-# KA9Q DEPLOYMENT
+# ka9q-radio deployment on SIGedge
 
-Below is a practical Ubuntu 24.04 installation path for **ka9q-radio** intended for an SDR edge node that may host an **RX-888 MkII, HackRF One, and RTL-SDR**. It uses the current upstream ka9q-radio architecture, where `radiod` directly interfaces with supported SDR front ends and distributes control, status, IQ, and demodulated streams over IP multicast. ([GitHub][1])
+This document describes the ka9q-radio integration that exists in the current SIGedge repository. It is an operator-facing companion to the project overview in [README.md](README.md). Development history and unfinished design work belong in [HANDOFF.md](HANDOFF.md), not in this guide.
 
-One important distinction for your broader edge architecture: **SoapySDR is not in the ka9q-radio data path for these three radios.** You may still want SoapySDR installed so applications such as SDRangel, GNU Radio, or custom services can access hardware independently, but `radiod` uses its own hardware interfaces.
+## Service model
 
-## 1. Recommended host baseline
-
-For Ubuntu:
-
-* Ubuntu Server **24.04 LTS x86-64**
-* 4+ CPU cores
-* 8 GB RAM minimum
-* Gigabit Ethernet minimum
-* USB 3.x controller for RX-888 MkII
-* preferably dedicated USB controller/root hub for RX-888
-* static IP or DHCP reservation
-* wired Ethernet preferred over Wi-Fi
-
-The RX-888 is the demanding device. At 129.6 Msps it can move **more than 2 Gbit/s over USB**, and ka9q's current default is 64.8 Msps partly because full-rate operation increases thermal and system load. ka9q recommends effectively one RX-888 per host. ([GitHub][2])
-
-Verify Ubuntu:
-
-```bash
-lsb_release -a
-uname -a
-```
-
-Update it:
-
-```bash
-sudo apt update
-sudo apt full-upgrade -y
-sudo reboot
-```
-
-After reboot:
-
-```bash
-sudo apt update
-```
-
----
-
-# 2. Enable Ubuntu Universe
-
-Some SDR packages reside in Universe.
-
-```bash
-sudo add-apt-repository universe
-sudo apt update
-```
-
----
-
-# 3. Install build dependencies
-
-Start with the packages needed by ka9q-radio plus the three SDR interfaces.
-
-```bash
-sudo apt install -y \
-    git \
-    build-essential \
-    gcc \
-    g++ \
-    make \
-    pkg-config \
-    rsync \
-    avahi-daemon \
-    avahi-utils \
-    libavahi-client-dev \
-    libbsd-dev \
-    libfftw3-dev \
-    libiniparser-dev \
-    libncurses-dev \
-    libncursesw5-dev \
-    libopus-dev \
-    libogg-dev \
-    libsamplerate0-dev \
-    libliquid-dev \
-    portaudio19-dev \
-    libasound2-dev \
-    uuid-dev \
-    libusb-1.0-0-dev \
-    libusb-dev \
-    libhackrf-dev \
-    hackrf \
-    librtlsdr-dev \
-    rtl-sdr
-```
-
-Recent ka9q-radio installation guidance includes libraries for FFTW, Avahi, HackRF, RTL-SDR, audio, USB, and related components. ([GitHub][3])
-
-Enable Avahi:
-
-```bash
-sudo systemctl enable --now avahi-daemon
-```
-
-Check it:
-
-```bash
-systemctl status avahi-daemon
-```
-
-Avahi matters because ka9q-radio uses multicast DNS for service discovery.
-
----
-
-# 4. Optional: install SoapySDR
-
-I recommend doing this on your edge platform even though ka9q-radio itself doesn't require it for these SDRs.
-
-```bash
-sudo apt install -y \
-    soapysdr-tools \
-    libsoapysdr-dev \
-    soapysdr-module-hackrf \
-    soapysdr-module-rtlsdr
-```
-
-Ubuntu provides native Soapy modules for both HackRF and RTL-SDR. ([GitHub][4])
-
-Verify:
-
-```bash
-SoapySDRUtil --info
-```
-
-Then:
-
-```bash
-SoapySDRUtil --find
-```
-
-Expect devices such as:
+ka9q-radio is SIGedge's primary interface between attached SDR hardware and upper-layer network services:
 
 ```text
-driver=hackrf
+SDR -> native ka9q-radio front end -> radiod -> RTP/IP multicast -> consumers
 ```
 
-and/or
+For the RX-888 MkII, HackRF, and RTL-SDR paths, SoapySDR is not between the hardware and `radiod`. SIGedge installs SoapySDR and related direct-access plumbing for applications that need an alternative path, but those services are not enabled by default.
+
+An SDR must have only one active owner. Do not run `radiod` and a direct-access application against the same device at the same time.
+
+## Current implementation
+
+| Component | Repository path | Current behavior |
+|---|---|---|
+| RX-888 host preparation | `devices/pkg_rx888` | Builds and stages volatile FX3 firmware, installs udev rules, configures USB buffering, and records a manifest |
+| ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
+| Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
+| Reference configurations | `config/radiod@*.EXAMPLE` | Shows the current generated configuration shape |
+| Diagnostic helper | `scripts/verify_ka9q-radio.sh` | Development helper; not suitable for unattended validation in its current form |
+
+Package installation and radio mission configuration are intentionally separate. Installing ka9q-radio does not create or start a radio-specific `radiod` instance.
+
+## Current limitations
+
+The repository is not yet a fully reproducible production deployment:
+
+- `packages/pkg_ka9q-radio install` expects `debs/ka9q-radio_current_amd64.deb` or `debs/ka9q-radio_current_arm64.deb`. Neither artifact is currently tracked, so a clean checkout must use the source `build` action or supply a package.
+- The ka9q-radio source build follows upstream `main`; it is not pinned to a tested commit.
+- RX-888 firmware also defaults to its upstream `main` branch unless `RX888_FW_REF` is set.
+- The generated radio configurations are reference missions. Validate their option names and hardware behavior against the installed ka9q-radio revision before production use.
+- `scripts/verify_ka9q-radio.sh` still references older service instance names and invokes interactive or unbounded tools. Use the bounded checks in this document instead.
+
+Regardless of installation path, SIGedge does not start a radio receiver by default. Hardware assignment, multicast interface selection, and receiver activation remain explicit operator actions.
+
+## Prerequisites
+
+The current target is Ubuntu Server 24.04 LTS on amd64/x86_64 or arm64/aarch64. The host needs:
+
+- `sudo` privileges
+- working package and source-network access
+- a multicast-capable network interface
+- a USB 3.x SuperSpeed path for an RX-888 MkII
+- sufficient CPU, memory, and USB bandwidth for the selected sample rates and channels
+
+The package scripts install their build and runtime dependencies. Avahi is enabled and started during the ka9q-radio build/install lifecycle because ka9q-radio uses multicast DNS for discovery.
+
+## 1. Prepare an RX-888 MkII when applicable
+
+RX-888 preparation is optional. HackRF, RTL-SDR, and other supported front ends do not require it.
+
+Under the normal SIGedge parent installer, run the RX-888 device install before installing or building ka9q-radio. For direct use from a repository checkout, provide a source directory and source the package script:
+
+```bash
+mkdir -p /tmp/sigedge-build
+SIGEDGE_SOURCE=/tmp/sigedge-build source devices/pkg_rx888 install
+```
+
+To build and stage firmware without attached-hardware validation:
+
+```bash
+mkdir -p /tmp/sigedge-build
+RX888_VALIDATE=0 SIGEDGE_SOURCE=/tmp/sigedge-build \
+  source devices/pkg_rx888 install
+```
+
+The script installs or creates:
 
 ```text
-driver=rtlsdr
+/usr/local/share/ka9q-radio/SDDC_FX3.img
+/etc/udev/rules.d/99-rx888.rules
+/etc/modprobe.d/usbcore.conf
+/var/lib/rx888/rx888-prep.env
 ```
 
-Do **not** expect RX-888 support through this step. Its ka9q-radio path is native.
+Firmware is staged on the host and loaded into volatile FX3 RAM. The script does not permanently flash EEPROM or SPI storage.
 
----
-
-# 5. Clone ka9q-radio
-
-Use the current upstream repository:
+Check the result with:
 
 ```bash
-cd ~
-git clone https://github.com/ka9q/ka9q-radio.git
-cd ka9q-radio
-```
-
-Record the build version:
-
-```bash
-git rev-parse HEAD
-```
-
-For an operational edge platform, I recommend storing this commit hash in your configuration-management inventory rather than blindly updating `main` in production.
-
----
-
-# 6. Build ka9q-radio
-
-Build:
-
-```bash
-make -j"$(nproc)"
-```
-
-Watch the final output for the relevant hardware modules.
-
-Current installations can produce modules such as:
-
-```text
-hackrf.so
-rtlsdr.so
-rx888.so
-```
-
-ka9q-radio introduced dynamically loadable front-end drivers in 2025, although several common interfaces have historically also been compiled into `radiod`. ([GitHub][5])
-
-Check:
-
-```bash
-find . -name 'hackrf.so' -o -name 'rtlsdr.so' -o -name 'rx888.so'
-```
-
-Then install:
-
-```bash
-sudo make install
-```
-
-Run:
-
-```bash
-sudo ldconfig
-sudo systemctl daemon-reload
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-The installation creates, among other things:
-
-```text
-/usr/local/sbin/radiod
-/usr/local/bin/control
-/usr/local/bin/monitor
-/usr/local/lib/ka9q-radio/
-/etc/radio/
-/etc/systemd/system/radiod@.service
-```
-
-and installs udev rules for RX-888, HackRF, and RTL-SDR. ([GitHub][6])
-
-Verify:
-
-```bash
-which radiod
-which control
-which monitor
-```
-
-Normally:
-
-```text
-/usr/local/sbin/radiod
-/usr/local/bin/control
-/usr/local/bin/monitor
-```
-
----
-
-# 7. Verify the installed hardware modules
-
-Run:
-
-```bash
-ls -lh /usr/local/lib/ka9q-radio/
-```
-
-Look for:
-
-```text
-hackrf.so
-rtlsdr.so
-rx888.so
-```
-
-Exact module composition can vary with the source revision and installed development libraries.
-
----
-
-# 8. Configure multicast networking
-
-ka9q-radio is fundamentally a **multicast SDR architecture**, not a conventional TCP SDR server. All signal/control/status traffic can use IP multicast. ([GitHub][1])
-
-Find your wired interface:
-
-```bash
-ip -br addr
-```
-
-Typical Ubuntu names:
-
-```text
-enp2s0
-eno1
-ens18
-```
-
-Test multicast capability:
-
-```bash
-ip link show
-```
-
-You want `MULTICAST` on the desired interface.
-
-For a dedicated SDR edge node I recommend explicitly specifying the Ethernet interface in `radiod` configurations. This avoids cases where Linux sends multicast over Wi-Fi or another interface after boot. The ka9q documentation specifically identifies this issue on multi-interface systems. ([GitHub][5])
-
-For example:
-
-```ini
-iface = enp2s0
-```
-
-Use your actual interface name.
-
----
-
-# 9. Test the RX-888 MkII
-
-Plug the RX-888 directly into a USB 3.x port.
-
-Check USB topology:
-
-```bash
-lsusb
-```
-
-and:
-
-```bash
+cat /var/lib/rx888/rx888-prep.env
+ls -l /usr/local/share/ka9q-radio/SDDC_FX3.img
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
 lsusb -t
 ```
 
-The RX-888 should be connected through a SuperSpeed path rather than:
+If the USB buffering setting could not be applied live, reboot before high-rate RX-888 operation.
+
+## 2. Build or install ka9q-radio
+
+### Source build available in a clean checkout
+
+Until release `.deb` files are supplied, the source build is the usable clean-checkout path:
+
+```bash
+mkdir -p /tmp/sigedge-build
+SIGEDGE_SOURCE=/tmp/sigedge-build source packages/pkg_ka9q-radio build
+```
+
+This installs dependencies, clones and builds ka9q-radio, runs `make install`, reloads systemd and udev, and verifies the `radiod`, `control`, and `monitor` commands.
+
+For a repeatable deployment, set or record a tested upstream revision before production. The current package script does not yet expose a ka9q commit override.
+
+### Prebuilt package path
+
+When an architecture-appropriate package has been placed in `debs/`, the SIGedge `install` action can install it. The required names are:
 
 ```text
-480M
+debs/ka9q-radio_current_amd64.deb
+debs/ka9q-radio_current_arm64.deb
 ```
 
-You ideally want:
+The parent SIGedge command supplies the environment used by the package script. Do not use the `install` action on a clean checkout until the appropriate file exists.
 
-```text
-5000M
-```
-
-or greater.
-
-Inspect kernel messages:
+### Verify the installation
 
 ```bash
-sudo dmesg --follow
-```
-
-Then unplug/replug the RX-888.
-
-## RX-888 ka9q configuration
-
-Create:
-
-```bash
-sudo nano /etc/radio/radiod@rx888.conf
-```
-
-Start with:
-
-```ini
-[global]
-hardware = rx888
-status = rx888.local
-iface = enp2s0
-
-[rx888]
-device = rx888
-description = "RX888 MkII Edge Receiver"
-samprate = 64800000
-```
-
-Replace:
-
-```text
-enp2s0
-```
-
-with your interface.
-
-The upstream configuration is essentially this simple because the RX-888 implementation is native to ka9q-radio and requires no separate SDR library. ([GitHub][2])
-
-The initial sample rate should remain:
-
-```text
-64,800,000
-```
-
-rather than immediately using 129.6 MHz.
-
-That yields roughly 0–32 MHz of alias-free spectrum under normal Nyquist assumptions, subject to your front-end filtering.
-
-The RX-888 support currently uses **direct sampling**. The R828 tuner/downconverter path associated with the VHF input is not currently supported by ka9q-radio. ([GitHub][2])
-
----
-
-# 10. Start the RX-888 instance
-
-Because ka9q installs a templated systemd service:
-
-```bash
-sudo systemctl enable --now radiod@rx888
-```
-
-Check:
-
-```bash
-systemctl status radiod@rx888
-```
-
-Logs:
-
-```bash
-journalctl -u radiod@rx888 -f
-```
-
-If it starts successfully, `radiod` should initialize the RX-888 and begin advertising its service/status information.
-
----
-
-# 11. Verify RX-888 service discovery
-
-Run:
-
-```bash
+command -v radiod
+command -v control
+command -v monitor
+systemctl is-active avahi-daemon
 avahi-browse -art
 ```
 
-You can narrow this depending on the advertised ka9q service:
+If dynamic front-end modules were produced, they are normally under:
 
 ```bash
-avahi-browse -rt _ka9q-ctl._udp
+ls -la /usr/local/lib/ka9q-radio/
 ```
 
-That discovery method is also used by projects consuming ka9q-radio streams. ([GitHub][7])
+Some front ends may be built directly into `radiod`, so the absence of a same-named `.so` file is not by itself an installation failure.
 
----
+## 3. Select the multicast interface
 
-# 12. Test the RTL-SDR
-
-Before starting ka9q, make sure the SDR itself works.
+On a host with Ethernet, Wi-Fi, VPN, container bridges, or multiple management interfaces, select the radio-facing interface deliberately:
 
 ```bash
-rtl_test -t
+ip -br link
+ip -br address
+ip route
 ```
 
-A successful result should identify the tuner.
+Pass its name as `KA9Q_IFACE` when generating configurations. If it is omitted, `radiod` selects the interface. SIGedge defaults multicast TTL to 1, limiting distribution to the local segment.
 
-If you get:
+## 4. Generate a radio mission
 
-```text
-Kernel driver is active
-```
+The current reference missions are:
 
-or similar DVB conflicts, inspect:
+| Selection | SDR | Channel | Generated configuration | Service instance |
+|---|---|---|---|---|
+| `rx888` | RX-888 MkII | WWV 10.000 MHz AM | `/etc/radio/radiod@rx888-wwv.conf` | `radiod@rx888-wwv` |
+| `hackrf` | HackRF | APRS 144.390 MHz FM | `/etc/radio/radiod@hackrf-aprs.conf` | `radiod@hackrf-aprs` |
+| `rtlsdr` | RTL-SDR | Simplex 144.650 MHz FM | `/etc/radio/radiod@rtlsdr-simplex.conf` | `radiod@rtlsdr-simplex` |
+
+Generate one configuration without enabling or starting it:
 
 ```bash
-lsmod | grep dvb
+KA9Q_IFACE=enp1s0 \
+KA9Q_ENABLE_SERVICES=0 \
+KA9Q_START_SERVICES=0 \
+  bash scripts/cfg_ka9q-radio hackrf
 ```
 
-Ubuntu may have claimed the USB stick with the DVB kernel driver.
+Replace `enp1s0` with the intended interface. Use `rx888`, `rtlsdr`, or `all` instead of `hackrf` as needed.
 
-The ka9q installation includes RTL-SDR-specific udev handling, but if necessary blacklist the DVB module applicable to your particular tuner.
-
-After changing module rules:
+The configurator backs up an existing target file before replacing it. Review the generated file before enabling a receiver:
 
 ```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo sed -n '1,240p' /etc/radio/radiod@hackrf-aprs.conf
 ```
 
-Disconnect/reconnect the stick.
+### Configuration overrides
 
-Re-test:
+| Variable | Purpose | Default |
+|---|---|---|
+| `KA9Q_IFACE` | Multicast network interface | selected by `radiod` |
+| `KA9Q_TTL` | Multicast TTL | `1` |
+| `KA9Q_ENABLE_SERVICES` | Enable generated instances | `1` when the configurator is explicitly run |
+| `KA9Q_START_SERVICES` | Start/restart generated instances | `0` |
+| `RX888_SERIAL` | Select an RX-888 by serial | unset |
+| `HACKRF_SERIAL` | Select a HackRF by serial | unset |
+| `RTLSDR_SERIAL` | Select an RTL-SDR by serial | unset |
+| `HACKRF_CENTER_HZ` | HackRF hardware center frequency | `144640000` |
+| `RTLSDR_CENTER_HZ` | RTL-SDR hardware center frequency | `144900000` |
+
+Serial overrides should be used only when supported by the installed ka9q-radio front end.
+
+## 5. Enable and start explicitly
+
+After reviewing a generated configuration:
 
 ```bash
-rtl_test -t
+sudo systemctl enable radiod@hackrf-aprs
+sudo systemctl start radiod@hackrf-aprs
 ```
 
----
+Equivalent instance names are `radiod@rx888-wwv` and `radiod@rtlsdr-simplex`.
 
-# 13. Configure RTL-SDR for ka9q-radio
-
-Create:
+Check immediate status and bounded logs:
 
 ```bash
-sudo nano /etc/radio/radiod@rtlsdr.conf
+systemctl --no-pager --full status radiod@hackrf-aprs
+journalctl --no-pager -u radiod@hackrf-aprs -n 100
 ```
 
-Initial configuration:
+Do not enable every reference instance unless all corresponding devices are attached and intended for concurrent use.
 
-```ini
-[global]
-hardware = rtlsdr
-status = rtlsdr.local
-iface = enp2s0
-
-[rtlsdr]
-device = rtlsdr
-description = "RTL-SDR Edge Receiver"
-```
-
-ka9q-radio currently supports generic RTL-SDR devices in **tuner mode**. ([GitHub][5])
-
-Start it:
-
-```bash
-sudo systemctl enable --now radiod@rtlsdr
-```
-
-Check:
-
-```bash
-systemctl status radiod@rtlsdr
-```
-
-and:
-
-```bash
-journalctl -u radiod@rtlsdr -f
-```
-
----
-
-# 14. Validate RTL-SDR through Soapy
-
-Separately:
-
-```bash
-SoapySDRUtil --find="driver=rtlsdr"
-```
-
-Then probe it:
-
-```bash
-SoapySDRUtil --probe="driver=rtlsdr"
-```
-
-This verifies the **parallel application ecosystem** independently of ka9q-radio.
-
-Think of these as two distinct access paths:
-
-```text
-                   +--> radiod native RTL-SDR driver
-RTL-SDR -- libusb -+
-                   +--> librtlsdr --> SoapyRTLSDR --> SDRangel/etc
-```
-
-They should **not normally access the same physical dongle simultaneously**.
-
----
-
-# 15. Test the HackRF
-
-Plug in the HackRF.
-
-Run:
-
-```bash
-hackrf_info
-```
-
-You should see something like:
-
-```text
-Found HackRF
-Serial number: ...
-Board ID Number: ...
-Firmware Version: ...
-```
-
-If not:
-
-```bash
-lsusb
-```
-
-Then:
-
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-Disconnect and reconnect it.
-
-Retry:
-
-```bash
-hackrf_info
-```
-
----
-
-# 16. Verify HackRF through Soapy
-
-```bash
-SoapySDRUtil --find="driver=hackrf"
-```
-
-Probe:
-
-```bash
-SoapySDRUtil --probe="driver=hackrf"
-```
-
-This proves your conventional SDR application path.
-
----
-
-# 17. Configure HackRF for radiod
-
-Here I recommend a little more caution.
-
-The current ka9q hardware documentation lists:
-
-```text
-hackrf
-```
-
-as a supported front end, and recent installation output includes `hackrf.so`. ([GitHub][8])
-
-However, some upstream narrative documentation still contains older language indicating that HackRF integration was being reworked. ([GitHub][5])
-
-So verify the exact source revision you built before relying on HackRF operationally.
-
-Create:
-
-```bash
-sudo nano /etc/radio/radiod@hackrf.conf
-```
-
-Start minimally:
-
-```ini
-[global]
-hardware = hackrf
-status = hackrf.local
-iface = enp2s0
-
-[hackrf]
-device = hackrf
-description = "HackRF Edge Receiver"
-```
-
-Run interactively first rather than enabling at boot:
-
-```bash
-sudo /usr/local/sbin/radiod /etc/radio/radiod@hackrf.conf
-```
-
-If that initializes cleanly, stop it with `Ctrl-C`.
-
-Then:
-
-```bash
-sudo systemctl start radiod@hackrf
-```
-
-Check:
-
-```bash
-journalctl -u radiod@hackrf -f
-```
-
-Only after validation:
-
-```bash
-sudo systemctl enable radiod@hackrf
-```
-
----
-
-# 18. Run several SDRs concurrently
-
-ka9q's systemd template makes this straightforward:
-
-```text
-radiod@rx888
-radiod@hackrf
-radiod@rtlsdr
-```
-
-Check all:
-
-```bash
-systemctl status 'radiod@*'
-```
-
-or:
-
-```bash
-systemctl list-units 'radiod@*'
-```
-
-Architecture:
-
-```text
-                    Ubuntu 24.04 SDR Edge Node
- +----------------------------------------------------------------+
- |                                                                |
- | RX-888 MkII --USB3--> radiod@rx888 -----+                      |
- |                                          |                      |
- | HackRF ------USB----> radiod@hackrf -----+---- RTP/IP Multicast|
- |                                          |                      |
- | RTL-SDR -----USB----> radiod@rtlsdr -----+                      |
- |                                                                |
- |                        |                                       |
- |                        +--> control/status                     |
- |                        +--> channel IQ                          |
- |                        +--> PCM/audio                           |
- |                        +--> downstream decoders                 |
- +------------------------|---------------------------------------+
-                          |
-                       Ethernet
-                          |
-       +------------------+------------------+
-       |                  |                  |
-   Analytics          Decoders            MCP/API
-   services           services            services
-```
-
-This is where ka9q-radio becomes particularly useful for the edge architecture we were discussing: consumers attach to multicast output rather than opening the SDR hardware itself.
-
----
-
-# 19. Do not let multiple applications fight over an SDR
-
-This becomes important when you install SoapySDR alongside ka9q-radio.
-
-For example, don't expect:
-
-```text
-radiod@hackrf
-```
-
-and:
-
-```text
-SDRangel -> SoapyHackRF
-```
-
-to independently control the same physical HackRF.
-
-Use ownership boundaries.
-
-A sensible arrangement is:
-
-| Radio      | Hardware owner   | Consumers                 |
-| ---------- | ---------------- | ------------------------- |
-| RX-888 #1  | ka9q `radiod`    | MCP, analytics, recorders |
-| HackRF #1  | ka9q `radiod`    | multicast consumers       |
-| HackRF #2  | SDRangel/Soapy   | interactive operator      |
-| RTL-SDR #1 | ka9q `radiod`    | fixed monitoring          |
-| RTL-SDR #2 | OpenWebRX+/Soapy | web users                 |
-
-This matches your earlier decision that you are willing to dedicate SDRs to specific software stacks.
-
----
-
-# 20. Verify multicast traffic
-
-While radiod is running:
-
-```bash
-ip maddr show
-```
-
-You should see multicast memberships.
-
-Capture multicast traffic:
-
-```bash
-sudo tcpdump -ni enp2s0 multicast
-```
-
-Or:
-
-```bash
-sudo tcpdump -ni enp2s0 udp
-```
-
-If you see traffic on the wrong interface, explicitly set:
-
-```ini
-iface = enp2s0
-```
-
-in each `radiod` configuration.
-
-This is especially important on a node having:
-
-```text
-eno1
-wlan0
-docker0
-tailscale0
-virbr0
-```
-
-or Kubernetes/container bridge interfaces.
-
----
-
-# 21. Firewall considerations
-
-Check Ubuntu firewall:
-
-```bash
-sudo ufw status
-```
-
-If this is a controlled SDR VLAN, my preference is not to globally disable filtering. Instead permit multicast/UDP only on the trusted SDR interface/VLAN.
-
-Also inspect:
-
-```bash
-sysctl net.ipv4.conf.all.rp_filter
-```
-
-Strict reverse-path filtering can sometimes interact badly with unusual multicast/multi-homed designs.
-
-For an edge node that will eventually run Docker or Kubernetes, carefully validate multicast after adding container networking. Docker bridge/NAT and CNI networking can make multicast behavior significantly more complex.
-
----
-
-# 22. RX-888 performance tuning
-
-For the RX-888 in particular:
-
-```bash
-lsusb -t
-```
-
-Make certain other high-bandwidth devices are not on the same root hub.
-
-Monitor:
-
-```bash
-htop
-```
-
-and:
-
-```bash
-watch -n1 'grep -E "cpu MHz" /proc/cpuinfo | head'
-```
-
-Check USB errors:
-
-```bash
-journalctl -k -f
-```
-
-At 64.8 Msps the RX-888 is already feeding the host roughly:
-
-```text
-64.8M samples/sec × 16 bits
-≈ 1.04 Gbit/sec
-```
-
-before USB/protocol overhead.
-
-At 129.6 Msps:
-
-```text
-129.6M × 16
-≈ 2.07 Gbit/sec
-```
-
-which explains ka9q's warning about USB and thermal constraints. ([GitHub][2])
-
-For an operational edge system I would start with:
-
-```ini
-samprate = 64800000
-```
-
-and only move to:
-
-```ini
-samprate = 129600000
-```
-
-after sustained USB, CPU, and thermal testing.
-
----
-
-# 23. Useful health-check commands
-
-I would put these in your edge-node runbook.
-
-Hardware:
-
-```bash
-lsusb
-lsusb -t
-```
-
-HackRF:
-
-```bash
-hackrf_info
-```
-
-RTL-SDR:
-
-```bash
-rtl_test -t
-```
-
-Soapy devices:
-
-```bash
-SoapySDRUtil --find
-```
-
-ka9q services:
-
-```bash
-systemctl list-units 'radiod@*'
-```
-
-RX-888:
-
-```bash
-journalctl -u radiod@rx888
-```
-
-HackRF:
-
-```bash
-journalctl -u radiod@hackrf
-```
-
-RTL-SDR:
-
-```bash
-journalctl -u radiod@rtlsdr
-```
-
-mDNS:
+## 6. Validate discovery and multicast
 
 ```bash
 avahi-browse -art
-```
-
-Multicast:
-
-```bash
 ip maddr show
+ip -s link show enp1s0
+sudo timeout 15 tcpdump -ni enp1s0 multicast
 ```
 
-Network traffic:
+Replace `enp1s0` with the configured interface. Use a bounded capture so validation cannot block an unattended workflow indefinitely.
+
+For hardware checks, stop any service that owns the device first, then use the appropriate tool:
 
 ```bash
-sudo tcpdump -ni enp2s0 multicast
+hackrf_info
+timeout 10 rtl_test -t
+lsusb
+lsusb -t
 ```
 
-Process utilization:
+## 7. Stop or disable a receiver
 
 ```bash
-htop
+sudo systemctl stop radiod@hackrf-aprs
+sudo systemctl disable radiod@hackrf-aprs
 ```
 
----
+Stopping `radiod` releases the SDR for an explicitly selected direct-access service. Stop that direct-access service before returning the device to ka9q-radio.
 
-# 24. Recommended software stack for your edge platform
+## Troubleshooting
 
-Given the architecture you described previously, I would install the node in layers:
+### A receiver cannot open its SDR
 
-```text
-APPLICATION / SERVICE LAYER
-------------------------------------------------
-Ollama
-MCP SDR Server
-OpenWebRX+
-SDRangel
-GNU Radio
-recorders / decoders / analytics
+Check for another process that owns the device, stop conflicting direct-access services, and then inspect udev permissions and USB enumeration:
 
-NETWORK SDR LAYER
-------------------------------------------------
-ka9q-radio
-  radiod
-  RTP
-  IP multicast
-  mDNS / Avahi
-
-HARDWARE ABSTRACTION LAYER
-------------------------------------------------
-Native drivers             SoapySDR
-  rx888                       |
-  hackrf                    SoapyHackRF
-  rtlsdr                    SoapyRTLSDR
-                             future SDRs
-
-OS / DEVICE LAYER
-------------------------------------------------
-libusb
-udev
-systemd
-Ubuntu 24.04
-
-HARDWARE
-------------------------------------------------
-RX-888 MkII
-HackRF
-RTL-SDR
+```bash
+systemctl --no-pager --full status radiod@hackrf-aprs
+journalctl --no-pager -u radiod@hackrf-aprs -n 100
+lsusb
+lsusb -t
 ```
 
-I would **not** put SoapySDR between the RX-888 and ka9q-radio. For the RX-888, let `radiod` own the hardware.
+### Discovery works on the wrong interface
 
----
+Regenerate the configuration with an explicit `KA9Q_IFACE`, then restart the selected receiver. Check routes and multicast membership before changing firewall rules.
 
-# 25. Recommended operational model
+### RX-888 drops samples or disconnects
 
-For the platform you're building, I would go one step further and separate **radio ownership** from **radio consumption**:
+Confirm SuperSpeed operation with `lsusb -t`, inspect kernel messages with `journalctl -k -n 100`, verify `usbfs_memory_mb`, and avoid sharing the controller with other high-bandwidth devices.
 
-```text
-                     SDR EDGE NODE
+### Configuration fails after an upstream update
 
-      +--------------------------------------+
-      | Radio Hardware Manager               |
-      |                                      |
-      | RX888 ------> radiod                 |
-      | HackRF -----> radiod                 |
-      | RTL-SDR ----> radiod                 |
-      |                                      |
-      +------------------+-------------------+
-                         |
-                      multicast
-                         |
-            +------------+------------+
-            |            |            |
-         Analyst       AI/MCP       Recorder
-         services      services      services
-            |
-        read-only
-```
-
-The edge node becomes the **authoritative hardware-control plane**, while downstream services become consumers.
-
-For the analyst/operator distinction you raised previously, that also provides a clean security boundary:
-
-```text
-ANALYST
-  subscribe to multicast streams
-  read telemetry/status
-  no direct hardware access
-
-OPERATOR
-  invoke authenticated control API
-        |
-        v
-  MCP/API control service
-        |
-        v
-  ka9q control protocol
-        |
-        v
-      radiod
-        |
-        v
-       SDR
-```
-
-That is substantially safer than exposing `librtlsdr`, `libhackrf`, or raw USB devices to every container or application.
-
-## One caution on HackRF
-
-The current tree clearly contains HackRF integration artifacts and lists HackRF as a front end, but upstream documentation is not completely synchronized: one current hardware document lists it as supported while another narrative note still describes reintegration work. ([GitHub][8])
-
-For that reason, for a production image I would pin a known-good ka9q commit and make **HackRF initialization a CI hardware-in-the-loop test**, rather than assuming every new `main` commit has identical behavior.
-
-For **RX-888 MkII**, the current native ka9q path is much more clearly documented and is the path I would use as the primary wideband HF ingest engine. ([GitHub][2])
-
-If this edge platform is going to become a repeatable Ubuntu appliance, the next logical step is to turn the installation above into an **Ansible role or unattended provisioning script** that installs ka9q-radio, SoapySDR, udev rules, three `radiod@` configurations, multicast/network tuning, and a health-check service.
-
-I can also build a **production reference architecture for this node** showing `radiod`, SoapySDR, OpenWebRX+, SDRangel, MCP, Ollama, containers, VLANs, multicast groups, and the analyst/operator control boundaries.
-
-[1]: https://github.com/ka9q/ka9q-radio?utm_source=chatgpt.com "GitHub - ka9q/ka9q-radio: Multichannel SDR based on fast convolution and IP multicasting · GitHub"
-[2]: https://github.com/ka9q/ka9q-radio/blob/main/docs/SDR/rx888.md?utm_source=chatgpt.com "ka9q-radio/docs/SDR/rx888.md at main · ka9q/ka9q-radio · GitHub"
-[3]: https://github.com/projecthorus/radiosonde_auto_rx/wiki/KA9Q%E2%80%90Radio-Setup-Notes?utm_source=chatgpt.com "KA9Q‐Radio Setup Notes · projecthorus/radiosonde_auto_rx Wiki · GitHub"
-[4]: https://github.com/kevinmehall/rust-soapysdr?utm_source=chatgpt.com "GitHub - kevinmehall/rust-soapysdr: Rust bindings for SoapySDR, the vendor-neutral software defined radio hardware abstraction layer · GitHub"
-[5]: https://github.com/ka9q/ka9q-radio/blob/main/docs/notes.md?utm_source=chatgpt.com "ka9q-radio/docs/notes.md at main · ka9q/ka9q-radio · GitHub"
-[6]: https://github.com/ka9q/ka9q-radio/issues/226?utm_source=chatgpt.com "make install does not create /etc/fftw on Raspberry Pi OS Trixie · Issue #226 · ka9q/ka9q-radio · GitHub"
-[7]: https://github.com/HamSCI/hf-timestd/blob/main/docs/EXTERNAL_PREREQUISITES.md?utm_source=chatgpt.com "hf-timestd/docs/EXTERNAL_PREREQUISITES.md at main · HamSCI/hf-timestd · GitHub"
-[8]: https://github.com/ka9q/ka9q-radio/blob/main/docs/ka9q-radio-2.md?utm_source=chatgpt.com "ka9q-radio/docs/ka9q-radio-2.md at main · ka9q/ka9q-radio · GitHub"
+Compare the generated configuration keys with the documentation or source for the exact installed ka9q-radio commit. The current SIGedge build tracks upstream `main`, so syntax or driver behavior can change until the project pins a tested revision.
