@@ -1,92 +1,128 @@
 # SIGedge
 
-## Introduction
+SIGedge is an SDR edge platform for turning attached radio hardware into RF, IQ, and audio services for network-connected consumers. Typical consumers include analytics and AI workflows, recorders, decoders, operator tools, SDRangel, OpenWebRX+, and custom applications.
 
-**SIGedge** is a SDR platform that abstracts attached RF hardware and exposes usable RF/IQ/audio services to multiple network-connected consumers such as AI/LLM workflows, signals analysis (SDRangel, OpneWebRX+, etc) recorders, and custom analytics.
+The preferred interface from a SIGedge node to upper-layer network services is **ka9q-radio**. Its `radiod` instances own the selected SDR hardware and publish control, status, IQ, and demodulated streams over IP multicast.
 
-**SIGedge** can be built on the following platforms:
+```text
+SDR hardware -> ka9q-radio radiod -> RTP/IP multicast -> network services
+```
 
-- Intel i5 with 16GB RAM and 128GB storage
-- Raspberry Pi 5 with 8GB RAM, 64GB storage
-- Ubuntu Server 24.04 LTS (amd64 and arm64)
+SIGedge also installs plumbing that allows applications to access supported SDRs directly, including SoapySDR-based paths. This is an alternative integration path for applications that cannot consume ka9q-radio services; it is not the primary SIGedge service architecture.
+
+## Default service policy
+
+Installation and activation are separate:
+
+- The standard setup installs SDR drivers and supporting components.
+- ka9q-radio support is installed, but no radio-specific `radiod` instance is configured, enabled, or started by default.
+- Direct SDR network-service plumbing is installed, but it is not enabled by default.
+- The operator must explicitly choose a service path and the SDR assigned to it.
+
+Only one service should own an SDR at a time. Do not start a direct-access service for a device already owned by `radiod`, or start `radiod` for a device in use by SDRangel, OpenWebRX+, SoapyRemote, `rtl_tcp`, or another application.
+
+## Architecture
+
+```text
+                              SIGedge node
+
+  RX-888 MkII ----+       +-------------------+
+  HackRF ----------+------>| ka9q-radio radiod |----> RTP/IP multicast
+  RTL-SDR ---------+       +-------------------+              |
+                                                             +--> APIs / MCP
+                                                             +--> analytics
+                                                             +--> recorders
+                                                             +--> decoders
+
+  Selected SDR --------> optional direct-access service ----> compatible app
+                         (installed, disabled by default)
+```
+
+ka9q-radio uses its native hardware interfaces for the RX-888 MkII, HackRF, and RTL-SDR paths. SoapySDR is available for the optional direct-access application ecosystem; it does not sit between these radios and `radiod`.
+
+## Supported platforms
+
+The current target operating system is Ubuntu Server 24.04 LTS on:
+
+- amd64/x86_64 systems, typically an Intel i5-class host with 16 GB RAM and at least 128 GB storage
+- arm64/aarch64 systems, including Raspberry Pi 5 with 8 GB RAM and at least 64 GB storage
+
+Actual compute, USB, network, and storage requirements depend on the SDR sample rates and the number and type of downstream channels.
 
 ## Setup
 
-```
-sudo apt update && sudo apt upgrade
-sudo apt-get install -y build-essential cmake git
-cd ~
-mkdir ~/SIGedge && cd ~/SIGedge
+On a fresh Ubuntu Server 24.04 LTS installation:
+
+```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install -y build-essential cmake git
 git clone https://github.com/joecupano/SIGedge.git
 cd SIGedge
 ./SIGedge setup
 ```
 
-## Adding Devices
+Setup presents device and service choices, installs the selected components, and reboots the system when complete. RTL-SDR and HackRF are the default device selections; other supported devices can be selected during setup or installed later.
 
-Once started you will be given a menu of SDR devices to choose to install. RTL-SDR and HackRF are selected as defaults. Select the additional devices you would like to install and then click **OK**. For the next 15 to 20 minutes you will see messages scroll by as the SIGedge platform components are installed
+To add a device after initial setup:
 
-After setup the system will reboot.
-
-Don't worry about missing a device. Post install you can add it using **SIGedge device install <DEVICE>**
-
-## Adding Packages
-
-Once setup, you can list the inventory of packages SIGpi includes as well as those already installed with the following
-
+```bash
+SIGedge device install <device>
 ```
+
+## Package management
+
+List the package library and show installed entries:
+
+```bash
 SIGedge list library
 ```
 
-An **asterisk** in the INSTALLED column indicates that package is already installed while those without asterisks have not been installed. For example, you will see **SDRangel Server** has not been installed. You can do so with the following
+Manage an individual package with:
 
-```
-SIGpi install sdrangel-server
-```
-
-Go back and list again to install other packages of interest
-
-## Managing Packages
-
-Packages can be installed, removed and purged using the following commands respectively
-
-```
-SIGpi install <package>
-SIGpi remove <package>
-SIGpi purge <package>
+```bash
+SIGedge install <package>
+SIGedge remove <package>
+SIGedge purge <package>
 ```
 
-Periodically new applications will be added to SIGpiand notifications sent to those watching the repo. To add applcations available for install into your SIGpi instance simple run run the following from within your /home/pi/SIG/SIGpi directory
+Build-capable packages may also support:
 
-```
-git pull
-```
-
-You will see the new applications as available running the list library command
-
-```
-SIGedge list library
+```bash
+SIGedge build <package>
+SIGedge package <package>
 ```
 
-You can update packages in your existing SIGpi install. For example, if there is a  **SDRangel** update you can run
+## Opting in to ka9q-radio
 
+SIGedge includes a separate configuration layer for radio missions. The current reference configurations are:
+
+| SDR | Channel | Mode | Service instance |
+|---|---:|---|---|
+| RX-888 MkII | WWV, 10.000 MHz | AM | `radiod@rx888-wwv` |
+| HackRF | APRS, 144.390 MHz | FM/NBFM | `radiod@hackrf-aprs` |
+| RTL-SDR | Amateur simplex, 144.650 MHz | FM/NBFM | `radiod@rtlsdr-simplex` |
+
+Running the configuration script is an explicit opt-in. For example, to generate and enable the HackRF reference instance without starting it:
+
+```bash
+KA9Q_ENABLE_SERVICES=1 KA9Q_START_SERVICES=0 \
+  bash scripts/cfg_ka9q-radio hackrf
 ```
-SIGedge update sdrangel-server
 
-Update 7.27.3 is available
+After reviewing the generated configuration, start that receiver explicitly:
 
-SIGedge upgrade sdrangel-server
+```bash
+sudo systemctl start radiod@hackrf-aprs
 ```
 
-## Example Hardware Setup
-![alt-test](https://github.com/joecupano/SIGpi/blob/main/backgrounds/SIGpi_architecture.png)
+The configuration script also accepts `rx888`, `rtlsdr`, or `all`. Set `KA9Q_IFACE` when multicast must use a specific network interface. Multicast TTL defaults to 1 for local-segment distribution.
 
-### Power
-In this setup a 12V@17A switching supply powers all the kit. Since RPi4 are picky about getting 5.1V a set-up converter is added to power it. A 12V Rpi4 are picky about getting 5.1V. USB peripherals can be hungry so a powered USB hub is included. While 7 ports are available no more than three devices requiring power should be enabled since hub produces a maximum of 36 Watts ( 3 x 5V x 2.4A = 36 Watts)
+## Network and hardware notes
 
-### Raspberry RPi4/5
-Since this is a SIGINT platform we do not want to be generating any RF so onboard Bluetooth and WiFi should be disabled. If Internet is needed and only available via WiFi then so be it and use your onboard WiFi.
+- Use a USB 3.x SuperSpeed path for the RX-888 MkII. The initial target sample rate is 64.8 Msps.
+- Bind multicast deliberately on hosts with multiple Ethernet, Wi-Fi, VPN, container, or management interfaces.
+- Disable onboard Bluetooth and Wi-Fi on dedicated receive nodes when they are unnecessary and local RF emissions are a concern.
+- Size powered USB hubs and power supplies for the attached devices; do not assume every hub port can supply its maximum current simultaneously.
 
-### USB Peripherals
-Only three USB devices requiring power should be enabled at a time. The range of devices depicted is only to demonstrate what you could potentially connect to it.
-
+Detailed ka9q-radio build and deployment background is available in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md). Development context for the current integration work is recorded in [HANDOFF.md](HANDOFF.md).
