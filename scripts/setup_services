@@ -6,24 +6,58 @@
 ### setup_services
 ###
 ###
-### 20260827-2300
+### 20260828-0000
 ###
-### Install service daemons
+### Install shared services and prepare selected ka9q-radio receivers.
+### Receiver units are configured but are not enabled or started.
 ###
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Services"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_RESET}"
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Services"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_RESET}"
 
-# Generate FFT Wisdom file
-source $SIGPI_PACKAGES/pkg_fftw install
-# Install RTL_433
-source $SIGPI_PACKAGES/pkg_rtl_433 install
-# Install KA9Q-radio
-source $SIGPI_PACKAGES/pkg_ka9q-radio install
+# Generate FFT wisdom and install the default ISM decoder.
+source "$SIGEDGE_PACKAGES/pkg_fftw" install || return 1
+source "$SIGEDGE_PACKAGES/pkg_rtl_433" install || return 1
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Packages complete"
-echo -e "${SIGPI_BANNER_RESET}"
+# Prefer a release package when present. A clean checkout currently has no
+# ka9q-radio .deb, so build and install from source in that case.
+KA9Q_DEB=""
+case "$SIGEDGE_HWARCH" in
+    x86_64)
+        KA9Q_DEB="$SIGEDGE_DEBS/ka9q-radio_current_amd64.deb"
+        ;;
+    aarch64|ARMv8)
+        KA9Q_DEB="$SIGEDGE_DEBS/ka9q-radio_current_arm64.deb"
+        ;;
+esac
+
+if [[ -n "$KA9Q_DEB" && -f "$KA9Q_DEB" ]]; then
+    source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" install || return 1
+else
+    echo "No ka9q-radio release package found; building from source"
+    source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" build || return 1
+fi
+
+# Generate only the missions selected during device setup. Configuration is
+# deliberately separate from activation: leave every unit disabled and stopped.
+if grep -qx 'rx888' "$SIGEDGE_INSTALLED_DEVICES"; then
+    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rx888 || return 1
+fi
+
+if grep -qx 'rtlsdr' "$SIGEDGE_INSTALLED_DEVICES"; then
+    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rtlsdr || return 1
+fi
+
+if grep -qx 'hackrf' "$SIGEDGE_INSTALLED_DEVICES"; then
+    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" hackrf || return 1
+fi
+
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Services complete"
+echo -e "${SIGEDGE_BANNER_RESET}"

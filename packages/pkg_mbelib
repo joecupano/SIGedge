@@ -13,61 +13,61 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : mbelib (P25 Phase)"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : mbelib (P25 Phase)"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
     remove )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r mbelib
-            sed -i /mbelib/d $SIGPI_INSTALLED
+            sed -i /mbelib/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r mbelib
-            sed -i /mbelib/d $SIGPI_INSTALLED
+            sed -i /mbelib/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
     purge )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P mbelib
-            sed -i /mbelib/d $SIGPI_INSTALLED
+            sed -i /mbelib/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P mbelib
-            sed -i /mbelib/d $SIGPI_INSTALLED
+            sed -i /mbelib/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
     install)
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i mbelib_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i mbelib_current_arm64.deb
         fi
-        cat $SIGPI_PKGLIST|grep "mbelib" >> $SIGPI_INSTALLED
+        cat $SIGEDGE_PKGLIST|grep "mbelib" >> $SIGEDGE_INSTALLED
 
 	    ## DESKTOP
 	    # Add Icon
@@ -80,7 +80,7 @@ case "$1" in
         ## DEPENDENCIES
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/szechyjs/mbelib.git
         cd mbelib
         git reset --hard 9a04ed5c78176a9965f3d43f7aa1b1f5330e771f
@@ -89,7 +89,7 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
-        cat $SIGPI_PKGLIST|grep "mbeliib" >> $SIGPI_INSTALLED 
+        cat $SIGEDGE_PKGLIST|grep "mbeliib" >> $SIGEDGE_INSTALLED
 
         ## DESKTOP
 	    # Add Icon
@@ -102,14 +102,14 @@ case "$1" in
         ## DEPENDENCIES
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/szechyjs/mbelib.git
         cd mbelib
         mkdir build; cd build
         cmake -Wno-dev ..
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
+        sudo mv *.deb $SIGEDGE_DEBS
 
         ## DESKTOP
 	    # Add Icon
@@ -119,8 +119,8 @@ case "$1" in
         ;;&
 
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : mbelib (P25 Phase) - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : mbelib (P25 Phase) - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

@@ -1,118 +1,90 @@
 #!/bin/bash
 
 ###
-### SIGPI
+### SIGedge
 ###
 ### setup_devices
 ###
 ###
-### 20260117-2300
+### 20260828-0000
 ###
-### Devices installed by default include RTLSDR, HackRF, and Ubertooth
-### Related software includes SoapySDR, SoapyRemote, SoapyRTLSDR, SoapyHackRF, and GPS
+### Install the SDR devices selected during setup.
+### Direct-access SoapySDR plumbing is installed but no network service is enabled.
 ###
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Devices"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_RESET}"
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Devices"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_RESET}"
 
-# SoapySDR 0.8
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapySDR "
-echo -e "${SIGPI_BANNER_RESET}"
-
+# SoapySDR plumbing for applications that access an SDR directly.
 sudo apt-get install -y libusb-1.0-0-dev soapysdr-tools libsoapysdr-dev
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapySDR - Completed"
-echo -e "${SIGPI_BANNER_RESET}"
-
-# SoapySDDC
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapySDDC "
-echo -e "${SIGPI_BANNER_RESET}"
-
-cd $SIGEDGE_SOURCE
-git clone https://github.com/renardspark/SDDC_Driver.git
-cd $SIGEDGE_SOURCE/SDDC_Driver
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-sudo cmake --install build
+# SoapySDDC for the optional direct-access RX-888 path.
+cd "$SIGEDGE_SOURCE" || return 1
+if [[ ! -d SDDC_Driver/.git ]]; then
+    git clone https://github.com/renardspark/SDDC_Driver.git || return 1
+fi
+cmake -S SDDC_Driver -B SDDC_Driver/build -DCMAKE_BUILD_TYPE=Release || return 1
+cmake --build SDDC_Driver/build -j"$(nproc)" || return 1
+sudo cmake --install SDDC_Driver/build || return 1
 sudo ldconfig
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapySDDC - Completed"
-echo -e "${SIGPI_BANNER_RESET}"
-
-# SoapyRemote
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapyRemote "
-echo -e "${SIGPI_BANNER_RESET}"
-
+# SoapyRemote plumbing is installed. No SoapySDRServer unit is enabled here.
 sudo apt-get install -y soapyremote-server soapysdr-module-remote
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  install : SoapyRemote - Completed"
-echo -e "${SIGPI_BANNER_RESET}"
+# AX.25 support is used by packet-radio services such as APRS.
+source "$SIGEDGE_PACKAGES/pkg_ax25" install || return 1
 
-# Install AX.25
-source $SIGPI_PACKAGES/pkg_ax25 install
-
-# Install RTLSDR
-source $SIGPI_DEVICES/pkg_rtlsdr-v4 install
-
-# Install HackRf
-source $SIGPI_DEVICES/pkg_hackrf install
-
-# Install RX-888 MkII
-if grep rx-888 "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_rx888 install
+# RX-888 preparation must run before ka9q-radio so its firmware manifest can
+# be validated by the ka9q package script.
+if grep -qx 'rx888' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_rx888" install || return 1
 fi
 
-# Install bladeRF
-if grep bladerf "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_bladerf install
+if grep -qx 'rtlsdr' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_rtlsdr" install || return 1
 fi
 
-# Install Ettus UHD
-if grep ettus "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_ettus install
+if grep -qx 'hackrf' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_hackrf" install || return 1
 fi
 
-# Install RigExpert Fobos
-if grep fobos "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_libfobos install
+if grep -qx 'bladerf' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_bladerf" install || return 1
 fi
 
-# Install KerberosSDR
-if grep kerberos "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_rtl-sdr-kerberos install
+if grep -qx 'ettus' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_ettus" install || return 1
 fi
 
-# Install LimeSDR
-if grep limesuite "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_limesuite install
+if grep -qx 'fobos' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_libfobos" install || return 1
 fi
 
-# Install PlutoSDR
-if grep plutosdr "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_plutosdr install
+if grep -qx 'kerberos' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_rtl-sdr-kerberos" install || return 1
 fi
 
-# Install SDRPlay
-if grep sdrplay "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_sdrplay install
+if grep -qx 'limesuite' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_limesuite" install || return 1
 fi
 
-# Install Ubertooth One
-if grep ubertooth "$SIGPI_INSTALLED_DEVICES"; then
-    source $SIGPI_DEVICES/pkg_ubertooth install
+if grep -qx 'plutosdr' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_plutosdr" install || return 1
 fi
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Devices: Complete"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_RESET}"
+if grep -qx 'sdrplay' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_sdrplay" install || return 1
+fi
+
+if grep -qx 'ubertooth' "$SIGEDGE_INSTALLED_DEVICES"; then
+    source "$SIGEDGE_DEVICES/pkg_ubertooth" install || return 1
+fi
+
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Devices: Complete"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_RESET}"

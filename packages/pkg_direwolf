@@ -12,26 +12,26 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package|config)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : DireWolf (AFSK APRS)"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : DireWolf (AFSK APRS)"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
     remove )
         sudo dpkg -r direwolf
-        sed -i /direwolf/d $SIGPI_INSTALLED
+        sed -i /direwolf/d $SIGEDGE_INSTALLED
         ;;&
 
     purge )
         sudo dpkg -P direwolf
-        sed -i /direwolf/d $SIGPI_INSTALLED
+        sed -i /direwolf/d $SIGEDGE_INSTALLED
         ;;&
 
     install|build|package )
@@ -44,22 +44,22 @@ case "$1" in
 
     install )
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i direwolf_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i direwolf_current_arm64.deb
         fi
-        cat $SIGPI_PKGLIST|grep "direwolf," >> $SIGPI_INSTALLED 
+        cat $SIGEDGE_PKGLIST|grep "direwolf," >> $SIGEDGE_INSTALLED
         ;;&
 
     build )
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://www.github.com/wb2osz/direwolf.git
         cd direwolf
         git reset --hard a231971 #v 1.8.1
@@ -71,30 +71,30 @@ case "$1" in
 
         sudo cp /usr/local/share/doc/direwolf/scripts/dw-start.sh /usr/local/bin/run_direwolf
         sudo mkdir /usr/local/etc/direwolf
-        sudo cp /usr/local/share/doc        sudo mv *.deb $SIGPI_DEBS/direwolf/conf/* /usr/local/etc/direwolf
-        cat $SIGPI_PKGLIST|grep "direwolf" >> $SIGPI_INSTALLED 
-	
+        sudo cp /usr/local/share/doc        sudo mv *.deb $SIGEDGE_DEBS/direwolf/conf/* /usr/local/etc/direwolf
+        cat $SIGEDGE_PKGLIST|grep "direwolf" >> $SIGEDGE_INSTALLED
+
         ## DESKTOP
         # Add Menu icon
         # Add Desktop links
-        sudo cp $SIGPI_SOURCE/direwolf/build/direwolf.desktop $DESKTOP_FILES/direwolf.desktop
+        sudo cp $SIGEDGE_SOURCE/direwolf/build/direwolf.desktop $DESKTOP_FILES/direwolf.desktop
         # Change Category
-        sudo sed -i "s/Categories.*/Categories=$SIGPI_MENU_CATEGORY;/" $DESKTOP_FILES/direwolf.desktop
+        sudo sed -i "s/Categories.*/Categories=$SIGEDGE_MENU_CATEGORY;/" $DESKTOP_FILES/direwolf.desktop
         # Add to Menu
         xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpi.directory $DESKTOP_FILES/direwolf.desktop
         ;;&
-    
+
     package )
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://www.github.com/wb2osz/direwolf.git
         cd direwolf
-        git reset --hard a231971 #v         sudo mv *.deb $SIGPI_DEBS1.8.1
+        git reset --hard a231971 #v         sudo mv *.deb $SIGEDGE_DEBS1.8.1
         mkdir build && cd build
         cmake .. -Wno-dev
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
+        sudo mv *.deb $SIGEDGE_DEBS
 
         ## DESKTOP
         # Add Icon
@@ -110,14 +110,14 @@ case "$1" in
         fi
 
         echo "ax0 ${3} 1200 255 7 APRRS/Packet" | sudo tee -a /etc/ax25/axports
-        sed -i "s/N0CALL/${3}/" "$SIGPI_ETC/direwolf.conf"
-        sed -i "s/# ADEVICE  plughw:1,0/ADEVICE  plughw:2,0/" $SIGPI_ETC/direwolf.conf
-        sed -i "/#PTT\ \/dev\/ttyUSB0\ RTS/a #Uncomment line below for PTT with sabrent sound card\n#PTT RIG 2 localhost:4532" $SIGPI_ETC/direwolf.conf
+        sed -i "s/N0CALL/${3}/" "$SIGEDGE_ETC/direwolf.conf"
+        sed -i "s/# ADEVICE  plughw:1,0/ADEVICE  plughw:2,0/" $SIGEDGE_ETC/direwolf.conf
+        sed -i "/#PTT\ \/dev\/ttyUSB0\ RTS/a #Uncomment line below for PTT with sabrent sound card\n#PTT RIG 2 localhost:4532" $SIGEDGE_ETC/direwolf.conf
         ;;&
 
     remove|purge|install|build|package|config )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : DireWolf (AFSK APRS) - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : DireWolf (AFSK APRS) - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

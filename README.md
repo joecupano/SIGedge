@@ -105,16 +105,17 @@ SIGedge includes a separate configuration layer for radio missions. The current 
 | HackRF | APRS, 144.390 MHz | FM/NBFM | `radiod@hackrf-aprs` |
 | RTL-SDR | Amateur simplex, 144.650 MHz | FM/NBFM | `radiod@rtlsdr-simplex` |
 
-Running the configuration script is an explicit opt-in. For example, to generate and enable the HackRF reference instance without starting it:
+Running the configuration script is an explicit opt-in. For example, to generate the HackRF reference instance without enabling or starting it:
 
 ```bash
-KA9Q_ENABLE_SERVICES=1 KA9Q_START_SERVICES=0 \
+KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
   bash scripts/cfg_ka9q-radio hackrf
 ```
 
-After reviewing the generated configuration, start that receiver explicitly:
+After reviewing the generated configuration, enable and start that receiver explicitly:
 
 ```bash
+sudo systemctl enable radiod@hackrf-aprs
 sudo systemctl start radiod@hackrf-aprs
 ```
 

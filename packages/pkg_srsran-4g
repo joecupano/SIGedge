@@ -10,27 +10,27 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : srsRAN-4g"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : srsRAN-4g"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
         sudo dpkg -r srsran-4g
-        sed -i /srsran-4g/d $SIGPI_INSTALLED
+        sed -i /srsran-4g/d $SIGEDGE_INSTALLED
         ;;&
 
     purge )
         sudo dpkg -P srsran-4g
-        sed -i /srsran-4g/d $SIGPI_INSTALLED
+        sed -i /srsran-4g/d $SIGEDGE_INSTALLED
         ;;&
 
     install )
@@ -39,15 +39,15 @@ case "$1" in
         sudo apt-get install -y libconfig++-dev libsctp-dev
 
         ## PACKAGE
-        cd $SIGPI_DEBS       
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+        cd $SIGEDGE_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
 	        sudo dpkg -i srsran-4g_current_amd64.deb
-            cat $SIGPI_PKGLIST|grep "srsran-4g" >> $SIGPI_INSTALLED
+            cat $SIGEDGE_PKGLIST|grep "srsran-4g" >> $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
 	        sudo dpkg -i srsran-4g_current_arm64.deb
-            cat $SIGPI_PKGLIST|grep "srsran-4g" >> $SIGPI_INSTALLED
+            cat $SIGEDGE_PKGLIST|grep "srsran-4g" >> $SIGEDGE_INSTALLED
         fi
 	    ;;&
 
@@ -55,33 +55,33 @@ case "$1" in
         ## DEPENDENCIES
         sudo apt-get install -y libmbedtls-dev libboost-program-options-dev
         sudo apt-get install -y libconfig++-dev libsctp-dev
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/srsRAN/srsRAN_4G.git
         cd srsRAN_4G
         mkdir build ; cd build
         cmake ../
         make -j4
         sudo make install
-        cat $SIGPI_PKGLIST|grep "srsran-4g" >> $SIGPI_INSTALLED
+        cat $SIGEDGE_PKGLIST|grep "srsran-4g" >> $SIGEDGE_INSTALLED
         ;;&
-    
+
     package )
         ## DEPENDENCIES
         sudo apt-get install -y libmbedtls-dev libboost-program-options-dev
         sudo apt-get install -y libconfig++-dev libsctp-dev
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/srsRAN/srsRAN_4G.git
         cd srsRAN_4G
         mkdir build ; cd build
         cmake ../
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
+        sudo mv *.deb $SIGEDGE_DEBS
 	    ;;&
 
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : srsRAN-4g - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : srsRAN-4g - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

@@ -12,34 +12,34 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : FFTW"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : FFTW"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
-        rm $SIGPI_ETC/fftw-wisdom
-        sed -i /fftw/d $SIGPI_INSTALLED
+        rm $SIGEDGE_ETC/fftw-wisdom
+        sed -i /fftw/d $SIGEDGE_INSTALLED
         ;;&
 
     purge )
-        rm $SIGPI_ETC/fftw-wisdom
-        sed -i /fftw/d $SIGPI_INSTALLED
+        rm $SIGEDGE_ETC/fftw-wisdom
+        sed -i /fftw/d $SIGEDGE_INSTALLED
         ;;&
 
     install )
         ## DEPENDENCIES
         sudo apt-get install -y libfftw3-dev
         sudo apt-get install -y libboost-all-dev
-        sudo apt-get install -y libgl1-mesa-dev 
+        sudo apt-get install -y libgl1-mesa-dev
         sudo apt-get install -y libopencv-dev
         sudo apt-get install -y libxml2-dev
         sudo apt-get install -y bison
@@ -52,32 +52,32 @@ case "$1" in
         ## PACKAGE
         # Generate a new wisdom file for FFT sizes : 128, 256, 512, 1024, 2048, 4096, 8192, 16384 and 32768.
         # This will take a very long time.
-        fftwf-wisdom -v -n -o $SIGPI_ETC/fftw-wisdom 128 256 512 1024 2048 4096 8192 16384 32768
-        cat $SIGPI_PKGLIST|grep "fftw" >> $SIGPI_INSTALLED
+        fftwf-wisdom -v -n -o $SIGEDGE_ETC/fftw-wisdom 128 256 512 1024 2048 4096 8192 16384 32768
+        cat $SIGEDGE_PKGLIST|grep "fftw" >> $SIGEDGE_INSTALLED
 
 	    ## DESKTOP
-        # Add Icon      
+        # Add Icon
         # Add Desktop
         # Add Run script
         # Change Category
         # Add to Menu
         ;;&
-    
+
     build )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Build option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Build option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;&
 
     package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Package option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Package option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;&
 
     remove|purge|install )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : FFTW - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : FFTW - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

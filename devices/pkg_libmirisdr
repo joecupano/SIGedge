@@ -11,62 +11,62 @@
 ###
 ### open-source driver specifically designed for SDR devices
 ### built on the Mirics MSi001 + MSi2500 chipset. This includes:
-### 
+###
 ### - SDRplay RSP1
 ### - MSI-SDR / "M3" Receivers (RSP1 clones)
 ### - Mirics MSi2500 default dongles
-### - Hauppauge WinTV 133559 LF: A specific TV tuner model 
+### - Hauppauge WinTV 133559 LF: A specific TV tuner model
 ### - AverMedia A859 Pure DVBT:
 ###
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   $1 : libmirisdr"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   $1 : libmirisdr"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
-        cd $SIGPI_DEBS
+        cd $SIGEDGE_DEBS
         sudo dpkg -r libmirisdr
         sudo dpkg -r soapymirisdr
-        sed -i /libmirisdr/d $SIGPI_INSTALLED_DEVICES
-        sed -i /soapymirisdr/d $SIGPI_INSTALLED_DEVICES
+        sed -i /libmirisdr/d $SIGEDGE_INSTALLED_DEVICES
+        sed -i /soapymirisdr/d $SIGEDGE_INSTALLED_DEVICES
         ;;&
 
     purge )
-        cd $SIGPI_DEBS
+        cd $SIGEDGE_DEBS
         sudo dpkg -P libmirisdr
         sudo dpkg -P soapymirisdr
-        sed -i /libmirisdr/d $SIGPI_INSTALLED_DEVICES
-        sed -i /soapymirisdr/d $SIGPI_INSTALLED_DEVICES
+        sed -i /libmirisdr/d $SIGEDGE_INSTALLED_DEVICES
+        sed -i /soapymirisdr/d $SIGEDGE_INSTALLED_DEVICES
         ;;&
 
     install )
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i libmirisdr_current_amd64.deb
             sudo dpkg -i soapymirisdr_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -i libmirisdr_current_arm64.deb
             sudo dpkg -i soapymirisdr_current_arm64.deb
         fi
-        cat $SIGPI_DEVLIST|grep "libmirisdr" >> $SIGPI_INSTALLED_DEVICES
-        cat $SIGPI_DEVLIST|grep "soapymirisdr" >> $SIGPI_INSTALLED_DEVICES
+        cat $SIGEDGE_DEVLIST|grep "libmirisdr" >> $SIGEDGE_INSTALLED_DEVICES
+        cat $SIGEDGE_DEVLIST|grep "soapymirisdr" >> $SIGEDGE_INSTALLED_DEVICES
         ;;&
 
     build|package )
         # Remove Kernel Drivers
         sudo modprobe -r msi2500 msi001
-        sudo cp $SIGPI_CONFIG/blacklist-msi.conf /etc/modprobe.d/blacklist-msi.conf
+        sudo cp $SIGEDGE_CONFIG/blacklist-msi.conf /etc/modprobe.d/blacklist-msi.conf
 
         ## SDRplay driver
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/ericek111/libmirisdr-5
         cd libmirisdr-5
         mkdir build && cd build
@@ -74,7 +74,7 @@ case "$1" in
         make -j4
 
         ## SoapySDRplay Driver
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/ericek111/SoapyMiri
         cd SoapyMiri
         mkdir build && cd build
@@ -83,35 +83,35 @@ case "$1" in
         ;;&
 
     build )
-        cd $SIGPI_SOURCE/libmirisdr-5/build
+        cd $SIGEDGE_SOURCE/libmirisdr-5/build
         sudo make install
         sudo ldconfig
 
-        cd $SIGPI_SOURCE/SoapyMiri/build    
+        cd $SIGEDGE_SOURCE/SoapyMiri/build
         sudo make install
         sudo ldconfig
-        cat $SIGPI_DEVLIST|grep "libmirisdr" >> $SIGPI_INSTALLED_DEVICES
+        cat $SIGEDGE_DEVLIST|grep "libmirisdr" >> $SIGEDGE_INSTALLED_DEVICES
         ;;&
-    
-    package)
-        cd $SIGPI_SOURCE/libmirisdr-5/build
-        sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
 
-        cd $SIGPI_SOURCE/SoapyMiri/build
+    package)
+        cd $SIGEDGE_SOURCE/libmirisdr-5/build
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
+        sudo mv *.deb $SIGEDGE_DEBS
+
+        cd $SIGEDGE_SOURCE/SoapyMiri/build
+        sudo checkinstall --install=no
+        sudo mv *.deb $SIGEDGE_DEBS
         ;;&
 
     remove|purge|install|build|package)
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   $1 : Libmirisdr completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   $1 : Libmirisdr completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     * )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unkown action or package"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unkown action or package"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

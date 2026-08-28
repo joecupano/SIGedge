@@ -11,23 +11,23 @@
 ### Ettus Research USRP Devices
 ###
 
-case "$1" in 
+case "$1" in
 
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : Ettus Research USRP Devices"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : Ettus Research USRP Devices"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
         sudo dpkg -r uhd
-        sed -i /uhd/d $SIGPI_INSTALLED_DEVICES
+        sed -i /uhd/d $SIGEDGE_INSTALLED_DEVICES
         ;;&
 
     purge )
         sudo dpkg -P uhd
-        sed -i /uhd/d $SIGPI_INSTALLED_DEVICES
-        sudo rm -rf $SIGPI_SOURCE/uhd*
+        sed -i /uhd/d $SIGEDGE_INSTALLED_DEVICES
+        sudo rm -rf $SIGEDGE_SOURCE/uhd*
         ;;&
 
     install|build|package )
@@ -39,31 +39,31 @@ case "$1" in
 
     install )
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i uhd_current_amd64.deb
-            cat $SIGPI_DEVLIST|grep "ettus" >> $SIGPI_INSTALLED_DEVICES
+            cat $SIGEDGE_DEVLIST|grep "ettus" >> $SIGEDGE_INSTALLED_DEVICES
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-            echo -e "${SIGPI_BANNER_COLOR}"
-            echo -e "${SIGPI_BANNER_COLOR} ##  $1 : not available for aarch64"
-            echo -e "${SIGPI_BANNER_RESET}"
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+            echo -e "${SIGEDGE_BANNER_COLOR}"
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : not available for aarch64"
+            echo -e "${SIGEDGE_BANNER_RESET}"
             exit
         fi
         ;;&
-    
+
     build|package )
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-            echo -e "${SIGPI_BANNER_COLOR}"
-            echo -e "${SIGPI_BANNER_COLOR} ##  $1 : not available for aarch64"
-            echo -e "${SIGPI_BANNER_RESET}"
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+            echo -e "${SIGEDGE_BANNER_COLOR}"
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : not available for aarch64"
+            echo -e "${SIGEDGE_BANNER_RESET}"
             exit
         fi
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/EttusResearch/uhd.git
         cd uhd
         git checkout v4.9.0.1
@@ -78,17 +78,17 @@ case "$1" in
         sudo cp /usr/local/lib/uhd/utils/uhd-usrp.rules /etc/udev/rules.d/
         sudo ldconfig
         sudo uhd_images_downloader
-        cat $SIGPI_DEVLIST|grep "ettus" >> $SIGPI_INSTALLED_DEVICES
+        cat $SIGEDGE_DEVLIST|grep "ettus" >> $SIGEDGE_INSTALLED_DEVICES
         ;;&
 
     package )
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
+        sudo mv *.deb $SIGEDGE_DEBS
         ;;&
 
     install|build|package|remove|purge )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : Ettus Research USRP Devices completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : Ettus Research USRP Devices completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 esac

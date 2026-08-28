@@ -13,28 +13,28 @@
 
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : Evil Crow RF V2"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : Evil Crow RF V2"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
         sudo dpkg -r evilcrowrf
-        sed -i /evilcrowrf/d $SIGPI_INSTALLED
+        sed -i /evilcrowrf/d $SIGEDGE_INSTALLED
         ;;&
 
     purge )
         sudo dpkg -P evilcrowrf
-        sed -i /evilcrowrf/d $SIGPI_INSTALLED
-        rm -rf $SIGPI_SOURCE/evilcrowrf-v2
+        sed -i /evilcrowrf/d $SIGEDGE_INSTALLED
+        rm -rf $SIGEDGE_SOURCE/evilcrowrf-v2
         ;;&
 
     install|build|package )
@@ -50,22 +50,22 @@ case "$1" in
 
     install )
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i evilcrowrf_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i evilcrowrf_current_arm64.deb
         fi
-        cat "$SIGPI_DEVLIST" | grep "evilcrowrf" >> "$SIGPI_INSTALLED_DEVICES"
+        cat "$SIGEDGE_DEVLIST" | grep "evilcrowrf" >> "$SIGEDGE_INSTALLED_DEVICES"
 
         ## DESKTOP
         # Add Icon
         # Add Desktop
-        sudo cp "$SIGPI_HOME"/desktop/evilcrowrf.desktop "$DESKTOP_FILES"
+        sudo cp "$SIGEDGE_HOME"/desktop/evilcrowrf.desktop "$DESKTOP_FILES"
         # Change Category
         # Add to Menu
         xdg-desktop-menu install --novendor --noupdate "$DESKTOP_DIRECTORY"/SIGpishell.directory "$DESKTOP_FILES"/evilcrowrf.desktop
@@ -73,7 +73,7 @@ case "$1" in
 
     build )
         ## PACKAGE
-        cd "$SIGPI_SOURCE"
+        cd "$SIGEDGE_SOURCE"
         git clone https://github.com/joelsernamoreno/evilcrowrf-v2.git
         cd evilcrowrf-v2
         mkdir -p build
@@ -82,12 +82,12 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
-        cat "$SIGPI_DEVLIST" | grep "evilcrowrf" >> "$SIGPI_DEVICES"
+        cat "$SIGEDGE_DEVLIST" | grep "evilcrowrf" >> "$SIGEDGE_DEVICES"
         ;;&
 
-    package )       
+    package )
         ## PACKAGE
-        cd "$SIGPI_SOURCE"
+        cd "$SIGEDGE_SOURCE"
         git clone https://github.com/joelsernamoreno/evilcrowrf-v2.git
         cd evilcrowrf-v2
         mkdir -p build
@@ -95,12 +95,12 @@ case "$1" in
         cmake ..
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb "$SIGPI_DEBS"
+        sudo mv *.deb "$SIGEDGE_DEBS"
         ;;&
 
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : Evil Crow RF V2 - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : Evil Crow RF V2 - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

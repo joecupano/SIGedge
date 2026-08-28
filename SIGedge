@@ -9,7 +9,7 @@
 ###  Usage:  SIGedge [ACTION] [TARGET|DEVICE]
 ###
 ###       ACTION
-###  
+###
 ###          install                install TARGET from current release
 ###          remove                 remove installed TARGET
 ###          purge                  remove installed TARGET and purge configs
@@ -34,7 +34,7 @@
 ###          list
 ###                 packages        List all packages included with SIGpi
 ###                 installed       List installed SIGpi packages
-###                 library         List all packages included with SIGpi with installed ones marked with an *  
+###                 library         List all packages included with SIGpi with installed ones marked with an *
 ###
 ###          shell           provide SIGpi env variables around a TARGET
 ###
@@ -52,17 +52,19 @@
 ### INIT VARIABLES AND DIRECTORIES
 ###
 
-# SIGpi Directory tree
-SIGEDGE_ROOT=$HOME/SIGpi-edge
+# SIGedge directory tree
+SIGEDGE_ENTRY="$(readlink -f "${BASH_SOURCE[0]}")"
+SIGEDGE_HOME="$(cd -- "$(dirname -- "$SIGEDGE_ENTRY")" && pwd)"
+SIGEDGE_ROOT=$SIGEDGE_HOME
 SIGEDGE_SOURCE=$SIGEDGE_ROOT/source
-SIGEDGE_HOME=$SIGEDGE_ROOT
 SIGEDGE_ETC=$SIGEDGE_ROOT/etc
+SIGEDGE_CONFIG=$SIGEDGE_ROOT/config
 SIGEDGE_DEVICES=$SIGEDGE_HOME/devices
 SIGEDGE_SCRIPTS=$SIGEDGE_HOME/scripts
 SIGEDGE_PACKAGES=$SIGEDGE_HOME/packages
 SIGEDGE_DEBS=$SIGEDGE_HOME/debs
 
-# SIGpi Install Support files
+# SIGedge install support files
 SIGEDGE_INSTALLED=$SIGEDGE_ETC/INSTALLED_PKGS
 SIGEDGE_PKGLIST=$SIGEDGE_PACKAGES/PACKAGES
 SIGEDGE_INSTALLED_DEVICES=$SIGEDGE_ETC/INSTALLED_DEVICES
@@ -89,7 +91,7 @@ SIGEDGE_IPADDR=`ip -br address | grep UP | awk '{print $1}'`
 SIGEDGE_update(){
     # Check for available updates to package
     wget https://raw.githubusercontent.com/joecupano/SIGpi-edge/main/packages/PACKAGES -P $HOME/Downloads
-    
+
     if grep $3 "$HOME/Downloads/PACKAGES"; then
         SIG_PKGSTAMP = 'grep $3 "$SIGEDGE_HOME/packages/PACKAGES"| cut -d,-f2'
         SIG_PKGNEW = 'grep $3 "$HOME/Downloads/PACKAGES"| cut -d,-f2'
@@ -122,7 +124,7 @@ if [ "$1" = "device" ]; then
     SPKGSCRIPT="pkg_$3"
 fi
 
-case "$1" in 
+case "$1" in
     setup )
         if [ "$2" = "apps" ]; then
             source $SIGEDGE_SCRIPTS/setup_apps
@@ -203,7 +205,7 @@ case "$1" in
         ;;
 
     config )
-        source $SIGEDGE_PACKAGES/$SCFGSCRIPT $3
+        source $SIGEDGE_SCRIPTS/$SCFGSCRIPT $3
         ;;
 
     update )
@@ -219,7 +221,7 @@ case "$1" in
             build )
                 source $SIGEDGE_DEVICES/$SPKGSCRIPT build
                 ;;
-        
+
             package )
                 source $SIGEDGE_DEVICES/$SPKGSCRIPT package
                 ;;
@@ -248,7 +250,7 @@ case "$1" in
        Usage:  SIGpi [ACTION] [TARGET|DEVICE]
 
        ACTION
-  
+
           install                install TARGET from current release
           remove                 remove installed TARGET
           purge                  remove installed TARGET and purge configs
@@ -273,7 +275,7 @@ case "$1" in
           list
                  packages        List all packages included with SIGpi
                  installed       List installed SIGpi packages
-                 library         List all packages included with SIGpi with installed ones marked with an *  
+                 library         List all packages included with SIGpi with installed ones marked with an *
 
           shell           provide SIGpi env variables around a TARGET
 

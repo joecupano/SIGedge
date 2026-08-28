@@ -31,8 +31,9 @@ fi
 ### but does not require them because ka9q-radio may be used with HackRF,
 ### RTL-SDR, Airspy, RX-888, or other supported front ends.
 ###
-RX888_MANIFEST="/var/lib/rx888/rx888-prep.env"
-RX888_DEFAULT_FIRMWARE="/usr/local/share/ka9q-radio/SDDC_FX3.img"
+KA9Q_SYSROOT="${SIGEDGE_SYSROOT:-}"
+RX888_MANIFEST="${KA9Q_SYSROOT}/var/lib/rx888/rx888-prep.env"
+RX888_DEFAULT_FIRMWARE="${KA9Q_SYSROOT}/usr/local/share/ka9q-radio/SDDC_FX3.img"
 
 ka9q_validate_rx888()
 {
@@ -115,18 +116,25 @@ ka9q_verify_install()
         fi
     done
 
-    if [[ -d /usr/local/lib/ka9q-radio ]]; then
-        ls -lh /usr/local/lib/ka9q-radio/
+    if [[ -d "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio" ]]; then
+        ls -lh "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio/"
     fi
 
     # Dynamic front-end modules depend on the ka9q-radio build and installed
     # development libraries.  Their absence is informational because some
     # front ends may be built directly into radiod.
     for module in rx888 hackrf rtlsdr; do
-        if [[ -f "/usr/local/lib/ka9q-radio/${module}.so" ]]; then
+        if [[ -f "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio/${module}.so" ]]; then
             echo "ka9q-radio dynamic front end installed: ${module}.so"
         fi
     done
+
+    if systemctl cat radiod@.service >/dev/null 2>&1; then
+        echo "ka9q-radio systemd template installed: radiod@.service"
+    else
+        echo "ERROR: radiod@.service systemd template not found"
+        failed=1
+    fi
 
     return "$failed"
 }

@@ -20,23 +20,28 @@
 
 ###
 ### Environment tests
-### 
+###
 
-# Are we the right hardware
-if [ "$SIGEDGE_HWARCH" = "x86_64" ] || [ "$SIGEDGE_HWARCH" = "ARMv8" ]; then
-    SIGEDGE_CERTIFIED="true"
-fi
+# Hardware and operating system must both be supported.
+case "$SIGEDGE_HWARCH" in
+    x86_64|aarch64|ARMv8) ;;
+    *) SIGEDGE_CERTIFIED="false" ;;
+esac
 
-# Are we the right operating system
-if [ "$SIGEDGE_OSNAME" = "Trixie" ] || [ "$SIGEDGE_OSNAME" = "Ubuntu" ]; then
-    SIGEDGE_CERTIFIED="true"
-fi
+case "$SIGEDGE_OSNAME" in
+    *"Ubuntu 24.04"*|*"Debian GNU/Linux 13"*)
+        if [[ "$SIGEDGE_HWARCH" =~ ^(x86_64|aarch64|ARMv8)$ ]]; then
+            SIGEDGE_CERTIFIED="true"
+        fi
+        ;;
+    *) SIGEDGE_CERTIFIED="false" ;;
+esac
 if [ "$SIGEDGE_CERTIFIED" = "false" ]; then
     echo "ERROR:"
     echo "ERROR:  Incorrect Hardware or Operating System"
     echo "ERROR:"
     echo "ERROR:  Hardware must be x86_64 or ARMv8 - Aborting"
-    echo "ERROR:  Operating system must be Ubuntu 24.40 or Debian Trixie - Aborting"
+    echo "ERROR:  Operating system must be Ubuntu 24.04 or Debian Trixie - Aborting"
     echo "ERROR:"
     exit 1;
 fi
@@ -47,8 +52,8 @@ fi
 ###
 
 calc_wt_size() {
-  # NOTE: it's tempting to redirect stderr to /dev/null, so supress error 
-  # output from tput. However in this case, tput detects neither stdout or 
+  # NOTE: it's tempting to redirect stderr to /dev/null, so supress error
+  # output from tput. However in this case, tput detects neither stdout or
   # stderr is a tty and so only gives default 80, 24 values
   WT_HEIGHT=26
   WT_WIDTH=$(tput cols)
@@ -63,7 +68,8 @@ calc_wt_size() {
 }
 
 select_startscreen(){
-    TERM=ansi whiptail --title "SIGedge Setup" --clear --textbox $SIGEDGE_SCREEN_DESKTOP 34 100 16
+    TERM=ansi whiptail --title "SIGedge Setup" --clear --msgbox \
+        "Configure this SIGedge node, select SDR hardware, and choose optional direct-access services." 12 80
 }
 
 select_devices() {
@@ -71,7 +77,7 @@ select_devices() {
         "Choose SDR devices " 20 80 12 \
         "rtlsdr" "RTLSDR v3/4" ON\
         "hackrf" "HackRF v1" ON\
-        "rx-888" "RX-888 MkII " OFF\
+        "rx888" "RX-888 MkII " OFF\
         "bladerf" "bladeRF " OFF \
         "ettus" "Ettus Research USRP UHD " OFF \
         "fobos" "RigExpert Fobos " OFF\
@@ -83,13 +89,13 @@ select_devices() {
         3>&1 1>&2 2>&3)
     RET=$?
     if [ $RET -eq 1 ]; then
-        $FUN = "NONE"
+        FUN=""
     fi
 
     IFS=' '     # space is set as delimiter
     read -ra ADDR <<< "$FUN"   # str is read into an array as tokens separated by IFS
     for i in "${ADDR[@]}"; do   # access each element of array
-        echo $FUN >> $SIGEDGE_INSTALLED_DEVICES
+        echo "$i" >> "$SIGEDGE_INSTALLED_DEVICES"
     done
 }
 
@@ -104,13 +110,13 @@ select_services() {
 		3>&1 1>&2 2>&3)
     RET=$?
     if [ $RET -eq 1 ]; then
-        $FUN = "NONE"
+        FUN=""
     fi
 
     IFS=' '     # space is set as delimiter
     read -ra ADDR <<< "$FUN"   # str is read into an array as tokens separated by IFS
     for i in "${ADDR[@]}"; do   # access each element of array
-        echo $FUN >> $SIGEDGE_INSTALLED_DEVICES
+        echo "$i" >> "$SIGEDGE_INSTALLED_DEVICES"
     done
 }
 
@@ -131,28 +137,29 @@ system_current() {
 ###
 
 # Setup directories
-mkdir $SIGEDGE_ETC
-touch $SIGEDGE_INSTALLED
-mkdir $SIGEDGE_SOURCE
-cd $SIGEDGE_SOURCE
+mkdir -p "$SIGEDGE_ETC"
+touch "$SIGEDGE_INSTALLED"
+touch "$SIGEDGE_INSTALLED_DEVICES"
+mkdir -p "$SIGEDGE_SOURCE"
+cd "$SIGEDGE_SOURCE" || return 1
 
 calc_wt_size
-select_startsrvscreen
+select_startscreen
 select_devices
 select_services
 TERM=ansi whiptail --title "SIGedge Setup" --clear --msgbox "Ready to continue" 12 120
 system_current
 
-cd $SIGEDGE_SOURCE
+cd "$SIGEDGE_SOURCE" || return 1
 
-source $SIGEDGE_SCRIPTS/setup_core
-source $SIGEDGE_SCRIPTS/setup_decoders
-source $SIGEDGE_SCRIPTS/setup_services
+source "$SIGEDGE_SCRIPTS/setup_core" || return 1
+source "$SIGEDGE_SCRIPTS/setup_devices" || return 1
+source "$SIGEDGE_SCRIPTS/setup_decoders" || return 1
+source "$SIGEDGE_SCRIPTS/setup_services" || return 1
 
-# Copy SIGpi commands into /usr/local/bin
-sudo cp $SIGEDGE_HOME/scripts/SIGEDGE_exec-in-shell /usr/local/bin/SIGEDGE_exec-in-shell 
-sudo cp $SIGEDGE_HOME/SIGpi /usr/local/bin/SIGpi
-  
+# Expose the repository command without copying it away from its support files.
+sudo ln -sfn "$SIGEDGE_HOME/SIGedge" /usr/local/bin/SIGedge
+
 # Install RTL-TCP Server
 if [ "$2" = "rtltcpsrv" ]; then
     sudo cp $SIGEDGE_CONFIG/rtltcp.service /etc/systemd/system/sigpi-node.service
@@ -178,7 +185,7 @@ if [ "$2" = "openwebrx" ]; then
     sudo cp $SIGEDGE_CONFIG/scripts/openwebrx.service /etc/systemd/system/openwebrx.service
     echo "sigpi-node_openwebrx" >> $SIGEDGE_INSTALLED
 fi
-        
+
 echo -e "${SIGEDGE_BANNER_COLOR}"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"
 echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Complete !!"

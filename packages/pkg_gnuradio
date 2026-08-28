@@ -13,30 +13,30 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : GNUradio"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : GNUradio"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
-        
+
     remove )
-        cd $SIGPI_DEBS
+        cd $SIGEDGE_DEBS
         sudo dpkg -r gnuradio
-        -i /gnuradio/d $SIGPI_INSTALLED
+        -i /gnuradio/d $SIGEDGE_INSTALLED
         sudo rm $DESKTOP_FILES/gnuradio-grc.desktop
         ;;&
 
     purge )
-        cd $SIGPI_DEBS        
+        cd $SIGEDGE_DEBS
         sudo dpkg -P gnuradio
-	    sed -i /gnuradio/d $SIGPI_INSTALLED
+	    sed -i /gnuradio/d $SIGEDGE_INSTALLED
         sudo rm $DESKTOP_FILES/gnuradio-grc.desktop
         ;;&
 
@@ -45,8 +45,8 @@ case "$1" in
         sudo apt-get install -y libglew-dev
         sudo apt-get install -y libglfw3-dev
         sudo apt-get install -y libsoapysdr-dev
-        sudo apt-get install -y libad9361-dev 
-        sudo apt-get install -y libairspyhf-dev 
+        sudo apt-get install -y libad9361-dev
+        sudo apt-get install -y libairspyhf-dev
         sudo apt-get install -y librtaudio-dev
         sudo apt-get install -y libcodec2-dev
         sudo apt-get install -y libvolk2-bin libvolk2-dev
@@ -71,7 +71,7 @@ case "$1" in
         sudo apt-get install -y liblog4cpp5-dev
         sudo apt-get install -y libqwt-qt5-dev
         sudo apt-get install -y libqt5opengl5-dev
-        sudo apt-get install -y liborc-0.4-0 
+        sudo apt-get install -y liborc-0.4-0
         sudo apt-get install -y liborc-0.4-dev
         sudo apt-get install -y python3-numpy
         sudo apt-get install -y python3-mako
@@ -86,45 +86,45 @@ case "$1" in
         sudo apt-get install -y python3-pip
         sudo apt-get install -y python3-gi-cairo
         sudo pip3 install "pybind11[global]"
-        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
             ### Add GNUradio repo
             sudo add-apt-repository ppa:gnuradio/gnuradio-releases
 	        sudo apt-get install -y gnuradio   # v3.10.12
-            cat $SIGPI_PKGLIST|grep "gnuradio" >> $SIGPI_INSTALLED 
+            cat $SIGEDGE_PKGLIST|grep "gnuradio" >> $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
             ### v3.10.5.1 from standard install
-            cd $SIGPI_DEBS
+            cd $SIGEDGE_DEBS
             #sudo dpkg -i volk_current_arm64.deb
 	        sudo apt-get install -y gnuradio   # v3.10.6.1
-            cat $SIGPI_PKGLIST|grep "gnuradio" >> $SIGPI_INSTALLED 
+            cat $SIGEDGE_PKGLIST|grep "gnuradio" >> $SIGEDGE_INSTALLED
         fi
 
     	## DESKTOP
 	    # Add Icon
         # Add Desktop
-        sudo cp $SIGPI_DESKTOP/gnuradio-grc.desktop $DESKTOP_FILES
+        sudo cp $SIGEDGE_DESKTOP/gnuradio-grc.desktop $DESKTOP_FILES
         # Change Category
 	    # Add to Menu
         ;;&
 
     build )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Build option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Build option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;&
 
     package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Package option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Package option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;&
 
     remove|purge|install )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : GNUradio - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : GNUradio - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

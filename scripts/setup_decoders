@@ -11,47 +11,47 @@
 ### Install codecs, demodulators and utilities
 ###
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Decoders"
-echo -e "${SIGPI_BANNER_COLOR} ##"
-echo -e "${SIGPI_BANNER_RESET}"
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Decoders"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_RESET}"
 
 # Install APTdec (NOAA APT)
-source $SIGPI_PACKAGES/pkg_aptdec install
+source $SIGEDGE_PACKAGES/pkg_aptdec install
 # Install cm256cc
-source $SIGPI_PACKAGES/pkg_cm256cc install
+source $SIGEDGE_PACKAGES/pkg_cm256cc install
 # Install mbelib (P25 Phase)
-source $SIGPI_PACKAGES/pkg_mbelib install
+source $SIGEDGE_PACKAGES/pkg_mbelib install
 # Install SeriaDV (AMBE3000 chip serial control)
-source $SIGPI_PACKAGES/pkg_serialdv install
+source $SIGEDGE_PACKAGES/pkg_serialdv install
 # Install DSDcc (Digital Speech Decoder)
-source $SIGPI_PACKAGES/pkg_dsdcc install
+source $SIGEDGE_PACKAGES/pkg_dsdcc install
 # Install Codec 2
-source $SIGPI_PACKAGES/pkg_codec2 install
+source $SIGEDGE_PACKAGES/pkg_codec2 install
 # Install SGP4
-source $SIGPI_PACKAGES/pkg_sgp4 install
+source $SIGEDGE_PACKAGES/pkg_sgp4 install
 # Install HamLib
-source $SIGPI_PACKAGES/pkg_hamlib install
+source $SIGEDGE_PACKAGES/pkg_hamlib install
 # Install Direwolf (AFSK APRS)
-source $SIGPI_PACKAGES/pkg_direwolf install
+source $SIGEDGE_PACKAGES/pkg_direwolf install
 # Install Linpac (AX.25 Terminal
-source $SIGPI_PACKAGES/pkg_linpac install
+source $SIGEDGE_PACKAGES/pkg_linpac install
 # Install ggMorse (Morse decode)
-source $SIGPI_PACKAGES/pkg_ggmorse install
+source $SIGEDGE_PACKAGES/pkg_ggmorse install
 # Install Inmarsatc decoder
-source $SIGPI_PACKAGES/pkg_inmarsatc install
+source $SIGEDGE_PACKAGES/pkg_inmarsatc install
 # Install RNnoise (noise suppression library)
-source $SIGPI_PACKAGES/pkg_rnnoise install
+source $SIGEDGE_PACKAGES/pkg_rnnoise install
 # Install Dump1090
-#source $SIGPI_PACKAGES/pkg_dump1090 install
+#source $SIGEDGE_PACKAGES/pkg_dump1090 install
 # Install Radiosonde (Atmospheric Telemetry)
-#source $SIGPI_PACKAGES/pkg_radiosonde install
+#source $SIGEDGE_PACKAGES/pkg_radiosonde install
 # Install NRSC5 (HD Radio)
-source $SIGPI_PACKAGES/pkg_nrsc5 install
+source $SIGEDGE_PACKAGES/pkg_nrsc5 install
 # Install Multimon-NG (POCSAG, FSK, AFSK, DTMF, X10)
-source $SIGPI_PACKAGES/pkg_multimon-ng install
+source $SIGEDGE_PACKAGES/pkg_multimon-ng install
 
-echo -e "${SIGPI_BANNER_COLOR}"
-echo -e "${SIGPI_BANNER_COLOR} ##  Setup Decoders complete"
-echo -e "${SIGPI_BANNER_RESET}"
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Decoders complete"
+echo -e "${SIGEDGE_BANNER_RESET}"

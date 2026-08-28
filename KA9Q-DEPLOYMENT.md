@@ -180,7 +180,7 @@ sudo sed -n '1,240p' /etc/radio/radiod@hackrf-aprs.conf
 |---|---|---|
 | `KA9Q_IFACE` | Multicast network interface | selected by `radiod` |
 | `KA9Q_TTL` | Multicast TTL | `1` |
-| `KA9Q_ENABLE_SERVICES` | Enable generated instances | `1` when the configurator is explicitly run |
+| `KA9Q_ENABLE_SERVICES` | Enable generated instances | `0` |
 | `KA9Q_START_SERVICES` | Start/restart generated instances | `0` |
 | `RX888_SERIAL` | Select an RX-888 by serial | unset |
 | `HACKRF_SERIAL` | Select a HackRF by serial | unset |

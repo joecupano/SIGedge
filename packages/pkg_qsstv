@@ -10,28 +10,28 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : QSSTV"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : QSSTV"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
         sudo apt-get remove qsstv
-        sed -i /qsstv/d $SIGPI_INSTALLED
+        sed -i /qsstv/d $SIGEDGE_INSTALLED
         sudo rm -f $DESKTOP_FILES/qsstv.desktop
         ;;&
 
     purge )
         sudo apt-get remove --purge qsstv
-        sed -i /qsstv/d $SIGPI_INSTALLED
+        sed -i /qsstv/d $SIGEDGE_INSTALLED
         sudo rm -f $DESKTOP_FILES/qsstv.desktop
         ;;&
 
@@ -39,36 +39,36 @@ case "$1" in
         ## DEPENDENCIES
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         sudo apt-get install -y qsstv
-        cat $SIGPI_PKGLIST|grep "qsstv" >> $SIGPI_INSTALLED 
-        
+        cat $SIGEDGE_PKGLIST|grep "qsstv" >> $SIGEDGE_INSTALLED
+
         ## DESKTOP
 	    # Add Icon
-        #sudo cp $SIGPI_ICONS/myicon.png $DESKTOP_ICONS
+        #sudo cp $SIGEDGE_ICONS/myicon.png $DESKTOP_ICONS
         # Add Desktop
-        sudo cp $SIGPI_DESKTOP/qsstv.desktop $DESKTOP_FILES
+        sudo cp $SIGEDGE_DESKTOP/qsstv.desktop $DESKTOP_FILES
         # Change Category
-	    #sudo sed -i "s/Categories.*/Categories=$SIGPI_MENU_CATEGORY;/" $DESKTOP_FILES/qsstv.desktop
+	    #sudo sed -i "s/Categories.*/Categories=$SIGEDGE_MENU_CATEGORY;/" $DESKTOP_FILES/qsstv.desktop
         # Add to Menu
         #xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/qsstv.desktop
         ;;&
 
     build )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Build option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Build option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;
 
     package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##   Package option not available"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##   Package option not available"
+        echo -e "${SIGEDGE_BANNER_RESET}"
 	    ;;
-    
+
     remove|purge|install )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : QSSTV - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : QSSTV - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

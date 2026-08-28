@@ -13,46 +13,46 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : NRSC5 (HD Radio)"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : NRSC5 (HD Radio)"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r nrsc5
-            sed -i /nrsc5/d $SIGPI_INSTALLED
+            sed -i /nrsc5/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r nrsc5
-            sed -i /nrsc5/d $SIGPI_INSTALLED
+            sed -i /nrsc5/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
     purge )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P nrsc5
-            sed -i /nrsc5/d $SIGPI_INSTALLED
+            sed -i /nrsc5/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P nrsc5
-            sed -i /nrsc5/d $SIGPI_INSTALLED
+            sed -i /nrsc5/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
@@ -63,17 +63,17 @@ case "$1" in
 
     install)
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i nrsc5_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i nrsc5_current_arm64.deb
         fi
-        cat $SIGPI_PKGLIST|grep "nrsc5" >> $SIGPI_INSTALLED
+        cat $SIGEDGE_PKGLIST|grep "nrsc5" >> $SIGEDGE_INSTALLED
 
 	    ## DESKTOP
 	    # Add Icon
@@ -84,7 +84,7 @@ case "$1" in
 
     build )
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/theori-io/nrsc5.git
         cd nrsc5
         mkdir build && cd build
@@ -92,12 +92,12 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
-        cat $SIGPI_PKGLIST|grep "nrsc5" >> $SIGPI_INSTALLED 
+        cat $SIGEDGE_PKGLIST|grep "nrsc5" >> $SIGEDGE_INSTALLED
 
         ## DESKTOP
         # Add Icon
         # Add Desktop
-        sudo cp $SIGPI_HOME/desktop/nrsc5.desktop $DESKTOP_FILES
+        sudo cp $SIGEDGE_HOME/desktop/nrsc5.desktop $DESKTOP_FILES
         # Change Category
         # Add to Menu
         xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/nrsc5.desktop
@@ -105,15 +105,15 @@ case "$1" in
 
     package )
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/theori-io/nrsc5.git
         cd nrsc5
         mkdir build && cd build
         cmake .. -Wno-dev
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
-        
+        sudo mv *.deb $SIGEDGE_DEBS
+
         ## DESKTOP
 	    # Add Icon
         # Add Desktop
@@ -122,8 +122,8 @@ case "$1" in
         ;;&
 
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : NRSC5 (HD Radio) - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : NRSC5 (HD Radio) - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

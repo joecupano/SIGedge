@@ -37,18 +37,19 @@
 _sigedge_rx888_main() {
     local ACTION="${1:-}"
     local PACKAGE_NAME="rx888"
+    local SYSROOT="${SIGEDGE_SYSROOT:-}"
     local FW_REPO="https://github.com/ringof/rx888-firmware.git"
     local FW_REF="${RX888_FW_REF:-main}"
     local SRC_ROOT="${SIGEDGE_SOURCE:-}"
     local SRC_DIR=""
     local FW_NAME="SDDC_FX3.img"
     local FW_BUILD=""
-    local FW_INSTALL_DIR="/usr/local/share/ka9q-radio"
+    local FW_INSTALL_DIR="${SYSROOT}/usr/local/share/ka9q-radio"
     local FW_INSTALL="${FW_INSTALL_DIR}/${FW_NAME}"
     local UDEV_SOURCE=""
-    local UDEV_INSTALL="/etc/udev/rules.d/99-rx888.rules"
-    local USB_CONF="/etc/modprobe.d/usbcore.conf"
-    local MANIFEST="/var/lib/rx888/rx888-prep.env"
+    local UDEV_INSTALL="${SYSROOT}/etc/udev/rules.d/99-rx888.rules"
+    local USB_CONF="${SYSROOT}/etc/modprobe.d/usbcore.conf"
+    local MANIFEST="${SYSROOT}/var/lib/rx888/rx888-prep.env"
     local VALIDATE="${RX888_VALIDATE:-1}"
     local FW_COMMIT=""
     local FW_SHA256=""
@@ -82,7 +83,7 @@ _sigedge_rx888_main() {
             sudo rm -f "${FW_INSTALL}" || return 1
             sudo rm -f "${UDEV_INSTALL}" || return 1
             sudo rm -f "${MANIFEST}" || return 1
-            sudo rmdir /var/lib/rx888 2>/dev/null || true
+            sudo rmdir "${SYSROOT}/var/lib/rx888" 2>/dev/null || true
             rm -rf "${SRC_DIR}" || return 1
 
             sudo udevadm control --reload-rules || return 1
@@ -98,7 +99,7 @@ _sigedge_rx888_main() {
             sudo rm -f "${UDEV_INSTALL}" || return 1
             sudo rm -f "${USB_CONF}" || return 1
             sudo rm -f "${MANIFEST}" || return 1
-            sudo rmdir /var/lib/rx888 2>/dev/null || true
+            sudo rmdir "${SYSROOT}/var/lib/rx888" 2>/dev/null || true
             rm -rf "${SRC_DIR}" || return 1
 
             sudo udevadm control --reload-rules || return 1
@@ -139,6 +140,8 @@ _sigedge_rx888_main() {
             make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
 
             sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
+            sudo install -d -m 0755 "$(dirname "${UDEV_INSTALL}")" || return 1
+            sudo install -d -m 0755 "$(dirname "${USB_CONF}")" || return 1
             sudo install -m 0644 "${FW_BUILD}" "${FW_INSTALL}" || return 1
             sudo install -m 0644 "${UDEV_SOURCE}" "${UDEV_INSTALL}" || return 1
 
@@ -150,8 +153,8 @@ _sigedge_rx888_main() {
             sudo udevadm control --reload-rules || return 1
             sudo udevadm trigger || return 1
 
-            if [[ -w /sys/module/usbcore/parameters/usbfs_memory_mb ]]; then
-                echo 0 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb >/dev/null || return 1
+            if [[ -w "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" ]]; then
+                echo 0 | sudo tee "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" >/dev/null || return 1
             else
                 echo "WARNING: usbfs_memory_mb could not be changed live; ${USB_CONF} will apply after reboot." >&2
             fi
@@ -214,6 +217,8 @@ _sigedge_rx888_main() {
             make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
 
             sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
+            sudo install -d -m 0755 "$(dirname "${UDEV_INSTALL}")" || return 1
+            sudo install -d -m 0755 "$(dirname "${USB_CONF}")" || return 1
             sudo install -m 0644 "${FW_BUILD}" "${FW_INSTALL}" || return 1
             sudo install -m 0644 "${UDEV_SOURCE}" "${UDEV_INSTALL}" || return 1
 
@@ -225,8 +230,8 @@ _sigedge_rx888_main() {
             sudo udevadm control --reload-rules || return 1
             sudo udevadm trigger || return 1
 
-            if [[ -w /sys/module/usbcore/parameters/usbfs_memory_mb ]]; then
-                echo 0 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb >/dev/null || return 1
+            if [[ -w "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" ]]; then
+                echo 0 | sudo tee "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" >/dev/null || return 1
             fi
 
             FW_COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)" || return 1

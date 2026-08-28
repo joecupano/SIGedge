@@ -24,7 +24,7 @@
 ###   KA9Q_IFACE=<interface>          Bind multicast to a specific interface.
 ###                                  If unset, radiod selects the interface.
 ###   KA9Q_TTL=<ttl>                 Multicast TTL. Default: 1
-###   KA9Q_ENABLE_SERVICES=0|1       Enable generated systemd services. Default: 1
+###   KA9Q_ENABLE_SERVICES=0|1       Enable generated systemd services. Default: 0
 ###   KA9Q_START_SERVICES=0|1        Start/restart generated services. Default: 0
 ###
 ### Device-selection overrides:
@@ -45,7 +45,7 @@ ACTION="${1:-all}"
 KA9Q_CONFIG_DIR="${KA9Q_CONFIG_DIR:-/etc/radio}"
 KA9Q_IFACE="${KA9Q_IFACE:-}"
 KA9Q_TTL="${KA9Q_TTL:-1}"
-KA9Q_ENABLE_SERVICES="${KA9Q_ENABLE_SERVICES:-1}"
+KA9Q_ENABLE_SERVICES="${KA9Q_ENABLE_SERVICES:-0}"
 KA9Q_START_SERVICES="${KA9Q_START_SERVICES:-0}"
 
 RX888_SERIAL="${RX888_SERIAL:-}"

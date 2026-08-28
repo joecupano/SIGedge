@@ -18,6 +18,7 @@ gqrx,2.15.8,SDR app powered GNU Radio and the Qt graphical toolkit,20220125
 hamlib,4.6.5,Radio Control Library providing API for controlling radios and rotators,20250905
 inmarsatc,1.0,Cplusplus library with functions to receive Inmarsat-C signals,20260124
 js8call,2.3.1,JS8 Digital Mode providing weak signal keyboard to keyboard messaging,20250628
+ka9q-radio,main,Multichannel SDR service using IP multicast,20260828
 kismet,2025-09-R1,Wired and wireless network sniffer for Wi-Fi Bluetooth Zigbee,20250901
 libbtbb,2020-12-R1,Bluetooth baseband decoding library,20211231
 libdab,1.0,DAB decoding library,20211231

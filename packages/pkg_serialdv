@@ -14,69 +14,69 @@
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
-    echo -e "${SIGPI_BANNER_COLOR}"
-    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
-    echo -e "${SIGPI_BANNER_RESET}"
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
     exit 1
 fi
 
-case "$1" in 
+case "$1" in
     remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : SerialDV"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : SerialDV"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
 
     remove )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r serialdv
-            sed -i /serialdv/d $SIGPI_INSTALLED
+            sed -i /serialdv/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -r serialdv
-            sed -i /serialdv/d $SIGPI_INSTALLED
+            sed -i /serialdv/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
     purge )
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P serialdv
-            sed -i /serialdv/d $SIGPI_INSTALLED
+            sed -i /serialdv/d $SIGEDGE_INSTALLED
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
             sudo dpkg -P serialdv
-            sed -i /serialdv/d $SIGPI_INSTALLED
+            sed -i /serialdv/d $SIGEDGE_INSTALLED
         fi
         ;;&
 
     install )
         ## PACKAGE
-        cd $SIGPI_PACKAGES        
-        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
-	        cd $SIGPI_DEBS
+        cd $SIGEDGE_PACKAGES
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i serialdv_current_amd64.deb
         fi
 
-        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
-	        cd $SIGPI_DEBS
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
 	        sudo dpkg -i serialdv_current_arm64.deb
         fi
-        cat $SIGPI_PKGLIST|grep "serialdv" >> $SIGPI_INSTALLED
+        cat $SIGEDGE_PKGLIST|grep "serialdv" >> $SIGEDGE_INSTALLED
         ;;&
 
     build )
         ## DEPENDENCIES
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/f4exb/serialDV.git
         cd serialDV
         git reset --hard "v1.1.5"
@@ -85,7 +85,7 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
-        cat $SIGPI_PKGLIST|grep "serialdv" >> $SIGPI_INSTALLED
+        cat $SIGEDGE_PKGLIST|grep "serialdv" >> $SIGEDGE_INSTALLED
 
         ## DESKTOP
 	    # Add Icon
@@ -98,7 +98,7 @@ case "$1" in
         ## DEPENDENCIES
 
         ## PACKAGE
-        cd $SIGPI_SOURCE
+        cd $SIGEDGE_SOURCE
         git clone https://github.com/f4exb/serialDV.git
         cd serialDV
         git reset --hard "v1.1.5"
@@ -106,8 +106,8 @@ case "$1" in
         cmake -Wno-dev ..
         make -j4
         sudo checkinstall --install=no
-        sudo mv *.deb $SIGPI_DEBS
-        
+        sudo mv *.deb $SIGEDGE_DEBS
+
         ## DESKTOP
 	    # Add Icon
         # Add Desktop
@@ -116,8 +116,8 @@ case "$1" in
         ;;&
 
      remove|purge|install|build|package )
-        echo -e "${SIGPI_BANNER_COLOR}"
-        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : SerialDV - Completed"
-        echo -e "${SIGPI_BANNER_RESET}"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : SerialDV - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac
