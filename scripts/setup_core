@@ -16,7 +16,7 @@ echo -e "${SIGEDGE_BANNER_COLOR} ##"
 echo -e "${SIGEDGE_BANNER_RESET}"
 
 # Repos
-sudo add-apt-repository universe
+sudo add-apt-repository universe -y
 sudo apt update && sudo apt upgrade -y
 
 # Baseline
@@ -30,39 +30,20 @@ sudo apt-get install -y python3-pip
 sudo apt-get install -y python3-cairocffi
 sudo apt-get install -y python3-click
 sudo apt-get install -y python3-click-plugins
-sudo apt-get install -y python3-cycler
-sudo apt-get install -y python3-gdal
 sudo apt-get install -y python3-gi-cairo
-sudo apt-get install -y python3-kiwisolver
 sudo apt-get install -y python3-lxml
 sudo apt-get install -y python3-mako
 sudo apt-get install -y python3-matplotlib
-sudo apt-get install -y python3-networkx
-sudo apt-get install -y python3-nose
 sudo apt-get install -y python3-numpy
-sudo apt-get install -y python3-opengl
-sudo apt-get install -y python3-pydot
-sudo apt-get install -y python3-pygraphviz
-sudo apt-get install -y python3-pyside
 sudo apt-get install -y python3-pyqtgraph
-sudo apt-get install -y python3-scapy
 sudo apt-get install -y python3-scipy
 sudo apt-get install -y python3-setuptools
 sudo apt-get install -y python3-sphinx
 sudo apt-get install -y python3-tk
-sudo apt-get install -y python3-tk-dbg
 sudo apt-get install -y python3-tornado
 sudo apt-get install -y python3-yaml
 sudo apt-get install -y python3-zmq
-sudo apt-get install -y python-cycler-doc
-sudo apt-get install -y python3-docutils
-sudo apt-get install -y python3-gobject
 sudo apt-get install -y python-matplotlib-data
-sudo apt-get install -y python-matplotlib-doc
-sudo apt-get install -y python-networkx-doc
-sudo apt-get install -y python3-dbg
-sudo pip3 install pyinstaller
-sudo pip3 install pygccxml
 
 ## SoapySDR
 sudo apt-get install -y swig
@@ -105,5 +86,5 @@ sudo apt-get install -y liboctave-dev
 sudo apt-get install -y libfltk1.3-dev
 
 echo -e "${SIGEDGE_BANNER_COLOR}"
-echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Core; Cpmplete"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Core: Complete"
 echo -e "${SIGEDGE_BANNER_RESET}"
