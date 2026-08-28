@@ -1,0 +1,130 @@
+#!/bin/bash
+
+###
+### SIGpi
+###
+### pkg_gnuradio
+###
+###
+### 20260113-2300
+###
+### For x86_64 we add GNUradio repo and install 3.10.5 package
+### For aarm64 we use previously compiled 3.9.8.0 for now
+###
+
+if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
+    echo -e "${SIGPI_BANNER_COLOR}"
+    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGPI_BANNER_RESET}"
+    exit 1
+fi
+
+case "$1" in 
+    remove|purge|install|build|package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : GNUradio"
+        echo -e "${SIGPI_BANNER_RESET}"
+        ;;&
+        
+    remove )
+        cd $SIGPI_DEBS
+        sudo dpkg -r gnuradio
+        -i /gnuradio/d $SIGPI_INSTALLED
+        sudo rm $DESKTOP_FILES/gnuradio-grc.desktop
+        ;;&
+
+    purge )
+        cd $SIGPI_DEBS        
+        sudo dpkg -P gnuradio
+	    sed -i /gnuradio/d $SIGPI_INSTALLED
+        sudo rm $DESKTOP_FILES/gnuradio-grc.desktop
+        ;;&
+
+    install )
+        ## DEPENDENCIES
+        sudo apt-get install -y libglew-dev
+        sudo apt-get install -y libglfw3-dev
+        sudo apt-get install -y libsoapysdr-dev
+        sudo apt-get install -y libad9361-dev 
+        sudo apt-get install -y libairspyhf-dev 
+        sudo apt-get install -y librtaudio-dev
+        sudo apt-get install -y libcodec2-dev
+        sudo apt-get install -y libvolk2-bin libvolk2-dev
+        sudo apt-get install -y libzstd-dev
+        sudo apt-get install -y libboost-all-dev
+        sudo apt-get install -y swig
+        sudo apt-get install -y libzmq3-dev
+        sudo apt-get install -y libfftw3-dev
+        sudo apt-get install -y libgsl-dev
+        sudo apt-get install -y libcppunit-dev
+        sudo apt-get install -y libcomedi-dev
+        sudo apt-get install -y libqt4-opengl-dev
+        sudo apt-get install -y libsdl1.2-dev
+        sudo apt-get install -y libusb-1.0-0-dev
+        sudo apt-get install -y libasound2-dev
+        sudo apt-get install -y portaudio19-dev
+        sudo apt-get install -y libportaudio2
+        sudo apt-get install -y pulseaudio
+        sudo apt-get install -y libjack-dev
+        sudo apt-get install -y libgmp-dev
+        sudo apt-get install -y libsdl1.2-dev
+        sudo apt-get install -y liblog4cpp5-dev
+        sudo apt-get install -y libqwt-qt5-dev
+        sudo apt-get install -y libqt5opengl5-dev
+        sudo apt-get install -y liborc-0.4-0 
+        sudo apt-get install -y liborc-0.4-dev
+        sudo apt-get install -y python3-numpy
+        sudo apt-get install -y python3-mako
+        sudo apt-get install -y python3-sphinx
+        sudo apt-get install -y python3-lxml
+        sudo apt-get install -y python3-pyqt5
+        sudo apt-get install -y python3-yaml
+        sudo apt-get install -y python3-click
+        sudo apt-get install -y python3-click-plugins
+        sudo apt-get install -y python3-zmq
+        sudo apt-get install -y python3-scipy
+        sudo apt-get install -y python3-pip
+        sudo apt-get install -y python3-gi-cairo
+        sudo pip3 install "pybind11[global]"
+        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+            ### Add GNUradio repo
+            sudo add-apt-repository ppa:gnuradio/gnuradio-releases
+	        sudo apt-get install -y gnuradio   # v3.10.12
+            cat $SIGPI_PKGLIST|grep "gnuradio" >> $SIGPI_INSTALLED 
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+            ### v3.10.5.1 from standard install
+            cd $SIGPI_DEBS
+            #sudo dpkg -i volk_current_arm64.deb
+	        sudo apt-get install -y gnuradio   # v3.10.6.1
+            cat $SIGPI_PKGLIST|grep "gnuradio" >> $SIGPI_INSTALLED 
+        fi
+
+    	## DESKTOP
+	    # Add Icon
+        # Add Desktop
+        sudo cp $SIGPI_DESKTOP/gnuradio-grc.desktop $DESKTOP_FILES
+        # Change Category
+	    # Add to Menu
+        ;;&
+
+    build )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##   Build option not available"
+        echo -e "${SIGPI_BANNER_RESET}"
+	    ;;&
+
+    package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##   Package option not available"
+        echo -e "${SIGPI_BANNER_RESET}"
+	    ;;&
+
+    remove|purge|install )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : GNUradio - Completed"
+        echo -e "${SIGPI_BANNER_RESET}"
+        ;;
+esac

@@ -1,0 +1,195 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### setup_start
+###
+
+###
+###  REVISION: 20260827-2300
+###
+
+###
+###  Usage:    setup_start
+###
+###            Fresh install of SIGedge on a fresh OS install
+###
+###
+###
+
+###
+### Environment tests
+### 
+
+# Are we the right hardware
+if [ "$SIGEDGE_HWARCH" = "x86_64" ] || [ "$SIGEDGE_HWARCH" = "ARMv8" ]; then
+    SIGEDGE_CERTIFIED="true"
+fi
+
+# Are we the right operating system
+if [ "$SIGEDGE_OSNAME" = "Trixie" ] || [ "$SIGEDGE_OSNAME" = "Ubuntu" ]; then
+    SIGEDGE_CERTIFIED="true"
+fi
+if [ "$SIGEDGE_CERTIFIED" = "false" ]; then
+    echo "ERROR:"
+    echo "ERROR:  Incorrect Hardware or Operating System"
+    echo "ERROR:"
+    echo "ERROR:  Hardware must be x86_64 or ARMv8 - Aborting"
+    echo "ERROR:  Operating system must be Ubuntu 24.40 or Debian Trixie - Aborting"
+    echo "ERROR:"
+    exit 1;
+fi
+
+
+###
+### FUNCTIONS
+###
+
+calc_wt_size() {
+  # NOTE: it's tempting to redirect stderr to /dev/null, so supress error 
+  # output from tput. However in this case, tput detects neither stdout or 
+  # stderr is a tty and so only gives default 80, 24 values
+  WT_HEIGHT=26
+  WT_WIDTH=$(tput cols)
+
+  if [ -z "$WT_WIDTH" ] || [ "$WT_WIDTH" -lt 60 ]; then
+    WT_WIDTH=60
+  fi
+  if [ "$WT_WIDTH" -gt 178 ]; then
+    WT_WIDTH=80
+  fi
+  WT_MENU_HEIGHT=$(($WT_HEIGHT-7))
+}
+
+select_startscreen(){
+    TERM=ansi whiptail --title "SIGedge Setup" --clear --textbox $SIGEDGE_SCREEN_DESKTOP 34 100 16
+}
+
+select_devices() {
+    FUN=$(whiptail --title "Devices Setup" --clear --checklist --separate-output \
+        "Choose SDR devices " 20 80 12 \
+        "rtlsdr" "RTLSDR v3/4" ON\
+        "hackrf" "HackRF v1" ON\
+        "rx-888" "RX-888 MkII " OFF\
+        "bladerf" "bladeRF " OFF \
+        "ettus" "Ettus Research USRP UHD " OFF \
+        "fobos" "RigExpert Fobos " OFF\
+        "kerberos" "Kerberos SDR " OFF\
+        "limesuite" "LimeSDR " OFF \
+        "plutosdr" "PlutoSDR " OFF \
+        "sdrplay" "SDRPlay " OFF \
+        "ubertooth" "Ubertooth One" OFF \
+        3>&1 1>&2 2>&3)
+    RET=$?
+    if [ $RET -eq 1 ]; then
+        $FUN = "NONE"
+    fi
+
+    IFS=' '     # space is set as delimiter
+    read -ra ADDR <<< "$FUN"   # str is read into an array as tokens separated by IFS
+    for i in "${ADDR[@]}"; do   # access each element of array
+        echo $FUN >> $SIGEDGE_INSTALLED_DEVICES
+    done
+}
+
+select_services() {
+    FUN=$(whiptail --title "Server Setup" --clear --checklist --separate-output \
+        "Choose which server to run as a service" 20 120 12 \
+        "openwebrx" "OpenWebRX " OFF \
+        "rtltcpsrv" "RTL-TCP Server " OFF \
+        "sdrangelsrv" "SDRangel Server " OFF \
+        "soapysdrsrv" "SoapySDR Server " OFF \
+        "radiosonde" "RadioSonde AutoRX " OFF \
+		3>&1 1>&2 2>&3)
+    RET=$?
+    if [ $RET -eq 1 ]; then
+        $FUN = "NONE"
+    fi
+
+    IFS=' '     # space is set as delimiter
+    read -ra ADDR <<< "$FUN"   # str is read into an array as tokens separated by IFS
+    for i in "${ADDR[@]}"; do   # access each element of array
+        echo $FUN >> $SIGEDGE_INSTALLED_DEVICES
+    done
+}
+
+system_current() {
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  System Update & Upgrade"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##"
+    echo -e "${SIGEDGE_BANNER_RESET}"
+
+    sudo apt-get -y update
+    sudo apt-get -y upgrade
+}
+
+
+###
+###  MAIN
+###
+
+# Setup directories
+mkdir $SIGEDGE_ETC
+touch $SIGEDGE_INSTALLED
+mkdir $SIGEDGE_SOURCE
+cd $SIGEDGE_SOURCE
+
+calc_wt_size
+select_startsrvscreen
+select_devices
+select_services
+TERM=ansi whiptail --title "SIGedge Setup" --clear --msgbox "Ready to continue" 12 120
+system_current
+
+cd $SIGEDGE_SOURCE
+
+source $SIGEDGE_SCRIPTS/setup_core
+source $SIGEDGE_SCRIPTS/setup_decoders
+source $SIGEDGE_SCRIPTS/setup_services
+
+# Copy SIGpi commands into /usr/local/bin
+sudo cp $SIGEDGE_HOME/scripts/SIGEDGE_exec-in-shell /usr/local/bin/SIGEDGE_exec-in-shell 
+sudo cp $SIGEDGE_HOME/SIGpi /usr/local/bin/SIGpi
+  
+# Install RTL-TCP Server
+if [ "$2" = "rtltcpsrv" ]; then
+    sudo cp $SIGEDGE_CONFIG/rtltcp.service /etc/systemd/system/sigpi-node.service
+    echo "sigpi-node_rtltcp" >> $SIGEDGE_INSTALLED
+fi
+
+# Install SDRangel Server
+if [ "$2" = "sdrangelsrv" ]; then
+    source $SIGEDGE_PACKAGES/pkg_sdrangelsrv install
+    sudo cp $SIGEDGE_CONFIG/sdrangelsrv.service /etc/systemd/system/sigpi-node.service
+    echo "sigpi-node_sdrangelsrv" >> $SIGEDGE_INSTALLED
+fi
+
+# Install SoapySDR Server
+if [ "$2" = "soapysdrsrv" ]; then
+    sudo cp $SIGEDGE_CONFIG/soapysdrsrv.service /etc/systemd/system/sigpi-node.service
+    echo "sigpi-node_soapysdrsrv" >> $SIGEDGE_INSTALLED
+fi
+
+# Install OpenWebRX
+if [ "$2" = "openwebrx" ]; then
+    source $SIGEDGE_PACKAGES/pkg_openwebrx install
+    sudo cp $SIGEDGE_CONFIG/scripts/openwebrx.service /etc/systemd/system/openwebrx.service
+    echo "sigpi-node_openwebrx" >> $SIGEDGE_INSTALLED
+fi
+        
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Complete !!"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  System needs to reboot for all changes to occur"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  Reboot will begin in 15 seconsds unless CTRL-C hit"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+echo -e "${SIGEDGE_BANNER_RESET}"
+sleep 15
+sudo sync
+sudo reboot
+exit 0

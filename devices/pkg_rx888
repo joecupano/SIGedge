@@ -1,0 +1,354 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### pkg_RX888
+###
+###
+### 20260827-2100
+###
+### RX-888 MkII firmware and host preparation
+###
+### Intended to be sourced by the SIGedge parent installer:
+###     source pkg_rx888.sh install
+###
+### Required parent environment:
+###     SIGEDGE_SOURCE       Source/build root
+###     SIGEDGE_PKGLIST      SIGedge package list (optional for status tracking)
+###     SIGEDGE_INSTALLED    SIGedge installed-package record (optional)
+###     SIGEDGE_DEBS         Output directory for package action
+###     SIGEDGE_BANNER_COLOR Banner color escape sequence
+###     SIGEDGE_BANNER_RESET Banner reset escape sequence
+###
+### Optional parent environment:
+###     RX888_FW_REF         Git branch/tag/commit; default: main
+###     RX888_VALIDATE       1=validate attached hardware on install/build; default: 1
+###
+### Notes:
+###   - This script does not change shell options because it is sourced.
+###   - Privileged operations use sudo; the calling user must have sudo privileges.
+###   - RX-888 FX3 firmware is staged for ka9q-radio and uploaded to volatile RAM
+###     during validation. The script does not permanently flash EEPROM/SPI.
+###
+
+# Local Variables required by script
+
+_sigedge_rx888_main() {
+    local ACTION="${1:-}"
+    local PACKAGE_NAME="rx888"
+    local FW_REPO="https://github.com/ringof/rx888-firmware.git"
+    local FW_REF="${RX888_FW_REF:-main}"
+    local SRC_ROOT="${SIGEDGE_SOURCE:-}"
+    local SRC_DIR=""
+    local FW_NAME="SDDC_FX3.img"
+    local FW_BUILD=""
+    local FW_INSTALL_DIR="/usr/local/share/ka9q-radio"
+    local FW_INSTALL="${FW_INSTALL_DIR}/${FW_NAME}"
+    local UDEV_SOURCE=""
+    local UDEV_INSTALL="/etc/udev/rules.d/99-rx888.rules"
+    local USB_CONF="/etc/modprobe.d/usbcore.conf"
+    local MANIFEST="/var/lib/rx888/rx888-prep.env"
+    local VALIDATE="${RX888_VALIDATE:-1}"
+    local FW_COMMIT=""
+    local FW_SHA256=""
+    local VALIDATION_STATUS="not-run"
+    local PKGROOT=""
+    local DEBFILE=""
+    local ARCH=""
+
+# What function to perform
+
+    if [[ ! "${ACTION}" =~ ^(remove|purge|install|build|package)$ ]]; then
+        echo -e "${SIGEDGE_BANNER_COLOR:-}"
+        echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: Unknown action or package"
+        echo -e "${SIGEDGE_BANNER_RESET:-}"
+        return 1
+    fi
+
+    SRC_DIR="${SRC_ROOT}/rx888-firmware"
+    FW_BUILD="${SRC_DIR}/SDDC_FX3/${FW_NAME}"
+    UDEV_SOURCE="${SRC_DIR}/tests/rx888_tools/udev/99-rx888.rules"
+    ARCH="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+
+    case "${ACTION}" in
+        remove|purge|install|build|package )
+            echo -e "${SIGEDGE_BANNER_COLOR:-}"
+            echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ${ACTION} : RX-888 MkII"
+            echo -e "${SIGEDGE_BANNER_RESET:-}"
+        ;;&
+
+        remove )
+            sudo rm -f "${FW_INSTALL}" || return 1
+            sudo rm -f "${UDEV_INSTALL}" || return 1
+            sudo rm -f "${MANIFEST}" || return 1
+            sudo rmdir /var/lib/rx888 2>/dev/null || true
+            rm -rf "${SRC_DIR}" || return 1
+
+            sudo udevadm control --reload-rules || return 1
+            sudo udevadm trigger || return 1
+
+            if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "${SIGEDGE_INSTALLED}" ]]; then
+                sed -i '/rx888/Id' "${SIGEDGE_INSTALLED}" || return 1
+            fi
+        ;;&
+
+        purge )
+            sudo rm -f "${FW_INSTALL}" || return 1
+            sudo rm -f "${UDEV_INSTALL}" || return 1
+            sudo rm -f "${USB_CONF}" || return 1
+            sudo rm -f "${MANIFEST}" || return 1
+            sudo rmdir /var/lib/rx888 2>/dev/null || true
+            rm -rf "${SRC_DIR}" || return 1
+
+            sudo udevadm control --reload-rules || return 1
+            sudo udevadm trigger || return 1
+
+            if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "${SIGEDGE_INSTALLED}" ]]; then
+                sed -i '/rx888/Id' "${SIGEDGE_INSTALLED}" || return 1
+            fi
+        ;;&
+
+        install|build|package )
+            ## DEPENDENCIES
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get update || return 1
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                ca-certificates \
+                git \
+                build-essential \
+                gcc-arm-none-eabi \
+                libusb-1.0-0 \
+                libusb-1.0-0-dev \
+                pkg-config \
+                usbutils \
+                udev || return 1
+        ;;&
+
+        install )
+            ## PACKAGE
+            rm -rf "${SRC_DIR}" || return 1
+            git clone --recursive "${FW_REPO}" "${SRC_DIR}" || return 1
+            git -C "${SRC_DIR}" checkout --force "${FW_REF}" || return 1
+            git -C "${SRC_DIR}" submodule update --init --recursive || return 1
+
+            make -C "${SRC_DIR}/SDDC_FX3" clean || return 1
+            make -C "${SRC_DIR}/SDDC_FX3" -j"$(nproc)" all || return 1
+            [[ -s "${FW_BUILD}" ]] || { echo "ERROR: Firmware build failed: ${FW_BUILD}" >&2; return 1; }
+            [[ -f "${UDEV_SOURCE}" ]] || { echo "ERROR: RX-888 udev rules not found: ${UDEV_SOURCE}" >&2; return 1; }
+
+            make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
+
+            sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
+            sudo install -m 0644 "${FW_BUILD}" "${FW_INSTALL}" || return 1
+            sudo install -m 0644 "${UDEV_SOURCE}" "${UDEV_INSTALL}" || return 1
+
+            printf '%s\n' \
+                '# RX-888 MkII high-rate USB3 streaming' \
+                '# 0 removes the usbfs per-device memory ceiling.' \
+                'options usbcore usbfs_memory_mb=0' | sudo tee "${USB_CONF}" >/dev/null || return 1
+
+            sudo udevadm control --reload-rules || return 1
+            sudo udevadm trigger || return 1
+
+            if [[ -w /sys/module/usbcore/parameters/usbfs_memory_mb ]]; then
+                echo 0 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb >/dev/null || return 1
+            else
+                echo "WARNING: usbfs_memory_mb could not be changed live; ${USB_CONF} will apply after reboot." >&2
+            fi
+
+            FW_COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)" || return 1
+            FW_SHA256="$(sha256sum "${FW_BUILD}" | awk '{print $1}')" || return 1
+
+            if [[ "${VALIDATE}" == "1" ]]; then
+                if lsusb | grep -Eiq '04b4:(00f1|00f3|8613)'; then
+                    if [[ -x "${SRC_DIR}/tests/fw_test.sh" ]]; then
+                        (
+                            cd "${SRC_DIR}/tests" || exit 1
+                            ./fw_test.sh --firmware "../SDDC_FX3/${FW_NAME}"
+                        ) || return 1
+                        VALIDATION_STATUS="passed"
+                    else
+                        VALIDATION_STATUS="tool-unavailable"
+                        echo "WARNING: fw_test.sh is unavailable; firmware was built and staged but not hardware-tested." >&2
+                    fi
+                else
+                    VALIDATION_STATUS="device-not-present"
+                    echo "WARNING: RX-888 is not attached; firmware was built and staged without hardware validation." >&2
+                fi
+            else
+                VALIDATION_STATUS="disabled"
+            fi
+
+            sudo install -d -m 0755 "$(dirname "${MANIFEST}")" || return 1
+            {
+                echo 'RX888_PREP_VERSION=2'
+                echo "RX888_ARCH=\"${ARCH}\""
+                echo "RX888_FW_REPO=\"${FW_REPO}\""
+                echo "RX888_FW_REF=\"${FW_REF}\""
+                echo "RX888_FW_COMMIT=\"${FW_COMMIT}\""
+                echo "RX888_FW_PATH=\"${FW_INSTALL}\""
+                echo "RX888_FW_SHA256=\"${FW_SHA256}\""
+                echo "RX888_UDEV_RULE=\"${UDEV_INSTALL}\""
+                echo 'RX888_USBFS_MEMORY_MB=0'
+                echo "RX888_VALIDATION=\"${VALIDATION_STATUS}\""
+            } | sudo tee "${MANIFEST}" >/dev/null || return 1
+            sudo chmod 0644 "${MANIFEST}" || return 1
+
+            if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "${SIGEDGE_PKGLIST}" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+                grep -i 'rx888' "${SIGEDGE_PKGLIST}" >> "${SIGEDGE_INSTALLED}" || true
+            fi
+        ;;&
+
+        build )
+            ## PACKAGE
+            rm -rf "${SRC_DIR}" || return 1
+            git clone --recursive "${FW_REPO}" "${SRC_DIR}" || return 1
+            git -C "${SRC_DIR}" checkout --force "${FW_REF}" || return 1
+            git -C "${SRC_DIR}" submodule update --init --recursive || return 1
+
+            make -C "${SRC_DIR}/SDDC_FX3" clean || return 1
+            make -C "${SRC_DIR}/SDDC_FX3" -j"$(nproc)" all || return 1
+            [[ -s "${FW_BUILD}" ]] || { echo "ERROR: Firmware build failed: ${FW_BUILD}" >&2; return 1; }
+            [[ -f "${UDEV_SOURCE}" ]] || { echo "ERROR: RX-888 udev rules not found: ${UDEV_SOURCE}" >&2; return 1; }
+
+            make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
+
+            sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
+            sudo install -m 0644 "${FW_BUILD}" "${FW_INSTALL}" || return 1
+            sudo install -m 0644 "${UDEV_SOURCE}" "${UDEV_INSTALL}" || return 1
+
+            printf '%s\n' \
+                '# RX-888 MkII high-rate USB3 streaming' \
+                '# 0 removes the usbfs per-device memory ceiling.' \
+                'options usbcore usbfs_memory_mb=0' | sudo tee "${USB_CONF}" >/dev/null || return 1
+
+            sudo udevadm control --reload-rules || return 1
+            sudo udevadm trigger || return 1
+
+            if [[ -w /sys/module/usbcore/parameters/usbfs_memory_mb ]]; then
+                echo 0 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb >/dev/null || return 1
+            fi
+
+            FW_COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)" || return 1
+            FW_SHA256="$(sha256sum "${FW_BUILD}" | awk '{print $1}')" || return 1
+
+            sudo install -d -m 0755 "$(dirname "${MANIFEST}")" || return 1
+            {
+                echo 'RX888_PREP_VERSION=2'
+                echo "RX888_ARCH=\"${ARCH}\""
+                echo "RX888_FW_REPO=\"${FW_REPO}\""
+                echo "RX888_FW_REF=\"${FW_REF}\""
+                echo "RX888_FW_COMMIT=\"${FW_COMMIT}\""
+                echo "RX888_FW_PATH=\"${FW_INSTALL}\""
+                echo "RX888_FW_SHA256=\"${FW_SHA256}\""
+                echo "RX888_UDEV_RULE=\"${UDEV_INSTALL}\""
+                echo 'RX888_USBFS_MEMORY_MB=0'
+                echo 'RX888_VALIDATION="not-run"'
+            } | sudo tee "${MANIFEST}" >/dev/null || return 1
+            sudo chmod 0644 "${MANIFEST}" || return 1
+
+            if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "${SIGEDGE_PKGLIST}" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+                grep -i 'rx888' "${SIGEDGE_PKGLIST}" >> "${SIGEDGE_INSTALLED}" || true
+            fi
+        ;;&
+
+        package )
+            ## PACKAGE
+            if [[ -z "${SIGEDGE_DEBS:-}" ]]; then
+                echo "ERROR: SIGEDGE_DEBS is required for the package action." >&2
+                return 1
+            fi
+
+            rm -rf "${SRC_DIR}" || return 1
+            git clone --recursive "${FW_REPO}" "${SRC_DIR}" || return 1
+            git -C "${SRC_DIR}" checkout --force "${FW_REF}" || return 1
+            git -C "${SRC_DIR}" submodule update --init --recursive || return 1
+
+            make -C "${SRC_DIR}/SDDC_FX3" clean || return 1
+            make -C "${SRC_DIR}/SDDC_FX3" -j"$(nproc)" all || return 1
+            [[ -s "${FW_BUILD}" ]] || { echo "ERROR: Firmware build failed: ${FW_BUILD}" >&2; return 1; }
+            [[ -f "${UDEV_SOURCE}" ]] || { echo "ERROR: RX-888 udev rules not found: ${UDEV_SOURCE}" >&2; return 1; }
+
+            FW_COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)" || return 1
+            PKGROOT="${SRC_ROOT}/rx888-deb"
+            DEBFILE="${SIGEDGE_DEBS}/sigedge-rx888_${FW_COMMIT:0:12}_all.deb"
+
+            rm -rf "${PKGROOT}" || return 1
+            mkdir -p \
+                "${PKGROOT}/DEBIAN" \
+                "${PKGROOT}${FW_INSTALL_DIR}" \
+                "${PKGROOT}/etc/udev/rules.d" \
+                "${PKGROOT}/etc/modprobe.d" || return 1
+
+            install -m 0644 "${FW_BUILD}" "${PKGROOT}${FW_INSTALL}" || return 1
+            install -m 0644 "${UDEV_SOURCE}" "${PKGROOT}${UDEV_INSTALL}" || return 1
+
+            cat > "${PKGROOT}${USB_CONF}" <<'PKGEOF'
+# RX-888 MkII high-rate USB3 streaming
+# 0 removes the usbfs per-device memory ceiling.
+options usbcore usbfs_memory_mb=0
+PKGEOF
+
+            cat > "${PKGROOT}/DEBIAN/control" <<PKGEOF
+Package: sigedge-rx888
+Version: 1.0+${FW_COMMIT:0:12}
+Section: misc
+Priority: optional
+Architecture: all
+Maintainer: SIGedge
+Depends: udev, libusb-1.0-0
+Description: SIGedge RX-888 MkII FX3 firmware and Linux host configuration
+ Stages SDDC_FX3.img for ka9q-radio, installs RX-888 udev rules,
+ and configures Linux USB buffering for high-rate RX-888 streaming.
+PKGEOF
+
+            cat > "${PKGROOT}/DEBIAN/postinst" <<'PKGEOF'
+#!/bin/sh
+set -e
+udevadm control --reload-rules || true
+udevadm trigger || true
+if [ -w /sys/module/usbcore/parameters/usbfs_memory_mb ]; then
+    echo 0 > /sys/module/usbcore/parameters/usbfs_memory_mb || true
+fi
+exit 0
+PKGEOF
+            chmod 0755 "${PKGROOT}/DEBIAN/postinst" || return 1
+
+            cat > "${PKGROOT}/DEBIAN/postrm" <<'PKGEOF'
+#!/bin/sh
+set -e
+udevadm control --reload-rules || true
+udevadm trigger || true
+exit 0
+PKGEOF
+            chmod 0755 "${PKGROOT}/DEBIAN/postrm" || return 1
+
+            mkdir -p "${SIGEDGE_DEBS}" || return 1
+            dpkg-deb --build --root-owner-group "${PKGROOT}" "${DEBFILE}" || return 1
+            rm -rf "${PKGROOT}" || return 1
+        ;;&
+
+        remove|purge|install|build|package )
+            echo -e "${SIGEDGE_BANNER_COLOR:-}"
+            echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ${ACTION} : RX-888 MkII - Completed"
+            echo -e "${SIGEDGE_BANNER_RESET:-}"
+        ;;
+    esac
+
+    return 0
+}
+
+# Run without leaking a large implementation function into the parent shell.
+if _sigedge_rx888_main "$@"; then
+    _sigedge_rx888_rc=0
+else
+    _sigedge_rx888_rc=$?
+fi
+unset -f _sigedge_rx888_main
+
+# When sourced, return to the parent. Direct execution remains usable for testing.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return "${_sigedge_rx888_rc}"
+else
+    exit "${_sigedge_rx888_rc}"
+fi

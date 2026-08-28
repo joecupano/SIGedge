@@ -1,0 +1,158 @@
+#!/bin/bash
+
+###
+### SIGPI
+###
+### pkg_rtl_433
+###
+###
+### 20260113-2300
+###
+### RTL_433 - RTL-SDR based 433.92MHz ISM band signal decoder
+###
+
+if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
+    echo -e "${SIGPI_BANNER_COLOR}"
+    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGPI_BANNER_RESET}"
+    exit 1
+fi
+
+case "$1" in 
+    remove|purge|install|build|package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : rtl_433"
+        echo -e "${SIGPI_BANNER_RESET}"
+        ;;&
+
+    remove )
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -r rtl_433
+            sed -i /rtl_433/d $SIGPI_INSTALLED
+            sudo rm $DESKTOP_ICONS/rtl_433.png
+            sudo rm $DESKTOP_FILES/rtl_433.desktop
+            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
+            sudo rm $DESKTOP_FILES/rtl_fm.desktop
+            sudo rm $DESKTOP_FILES/rtl_test.desktop
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -r rtl_433
+            sed -i /rtl_433/d $SIGPI_INSTALLED
+            sudo rm $DESKTOP_ICONS/rtl_433.png
+            sudo rm $DESKTOP_FILES/rtl_433.desktop
+            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
+            sudo rm $DESKTOP_FILES/rtl_fm.desktop
+            sudo rm $DESKTOP_FILES/rtl_test.desktop
+        fi
+        ;;&
+
+    purge )
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -P rtl_433
+            sed -i /rtl_433/d $SIGPI_INSTALLED
+            sudo rm $DESKTOP_ICONS/rtl_433.png
+            sudo rm $DESKTOP_FILES/rtl_433.desktop
+            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
+            sudo rm $DESKTOP_FILES/rtl_fm.desktop
+            sudo rm $DESKTOP_FILES/rtl_test.desktop
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -P rtl_433
+            sed -i /rtl_433/d $SIGPI_INSTALLED
+            sudo rm $DESKTOP_ICONS/rtl_433.png
+            sudo rm $DESKTOP_FILES/rtl_433.desktop
+            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
+            sudo rm $DESKTOP_FILES/rtl_fm.desktop
+            sudo rm $DESKTOP_FILES/rtl_test.desktop
+        fi
+        ;;&
+
+    install)
+        ## PACKAGE
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+	        sudo dpkg -i rtl_433_current_amd64.deb
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+	        sudo dpkg -i rtl_433_current_arm64.deb
+        fi
+        cat $SIGPI_PKGLIST|grep "rtl_433" >> $SIGPI_INSTALLED
+
+	    ## DESKTOP
+	    # Add Icon
+        # Add Desktop
+        sudo cp $SIGPI_DESKTOP/rtl_433.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_DESKTOP/rtl_adsb.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_DESKTOP/rtl_fm.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_DESKTOP/rtl_test.desktop $DESKTOP_FILES 
+        # Change Category
+	    # Add to Menu
+        ;;&
+
+    build )
+        ## DEPENDENCIES
+        #sudo apt-get install -y libtool libusb-1.0-0-dev librtlsdr-dev rtl-sdr libssl-dev
+        sudo apt-get install -y libtool libusb-1.0-0-dev rtl-sdr libssl-dev
+
+        ## PACKAGE
+        cd $SIGPI_SOURCE
+        git clone https://github.com/merbanan/rtl_433.git
+        cd rtl_433
+        git reset --hard ea7d504 # v25.12
+        mkdir build && cd build
+        cmake .. -Wno-dev
+        make -j4
+        sudo make install
+        sudo ldconfig
+        cat $SIGPI_PKGLIST|grep "rtl_433" >> $SIGPI_INSTALLED 
+
+	    ## DESKTOP
+	    # Add Icon
+        sudo cp $SIGPI_ICONS/rtl_433.png $DESKTOP_ICONS
+        # Add Desktop
+        sudo cp $SIGPI_HOME/desktop/rtl_433.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_HOME/desktop/rtl_adsb.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_HOME/desktop/rtl_fm.desktop $DESKTOP_FILES
+        sudo cp $SIGPI_HOME/desktop/rtl_test.desktop $DESKTOP_FILES
+	    # Change Category
+        # Add to Menu
+        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_433.desktop
+        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_adsb.desktop
+        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_fm.desktop
+        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_test.desktop
+	    ;;&
+
+    package )
+        ## DEPENDENCIES
+        #sudo apt-get install -y libtool libusb-1.0-0-dev librtlsdr-dev rtl-sdr libssl-dev
+        sudo apt-get install -y libtool libusb-1.0-0-dev rtl-sdr libssl-dev
+
+        ## PACKAGE
+        cd $SIGPI_SOURCE
+        git clone https://github.com/merbanan/rtl_433.git
+        cd rtl_433
+        git reset --hard ea7d504 # v25.12
+        mkdir build && cd build
+        cmake .. -Wno-dev
+        make -j4
+        sudo checkinstall --install=no
+        sudo mv *.deb $SIGPI_DEBS
+        ;;&
+
+    remove|purge|install|build|package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : rtl_433 - Completed"
+        echo -e "${SIGPI_BANNER_RESET}"
+    ;;
+esac

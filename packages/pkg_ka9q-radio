@@ -1,0 +1,344 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### pkg_ka9q-radio
+###
+###
+### 20260827-2300
+###
+### ka9q-radio package management script
+###
+### This script is intended to be sourced by the SIGedge parent installer.
+### It supports multiple SDR front ends. RX-888 preparation is optional and
+### is validated only when pkg_rx888.sh has previously created its manifest.
+###
+
+ACTION="$1"
+
+if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
+    return 1
+fi
+
+
+### OPTIONAL RX-888 INTEGRATION
+###
+### pkg_rx888.sh owns these files.  This script validates them when present,
+### but does not require them because ka9q-radio may be used with HackRF,
+### RTL-SDR, Airspy, RX-888, or other supported front ends.
+###
+RX888_MANIFEST="/var/lib/rx888/rx888-prep.env"
+RX888_DEFAULT_FIRMWARE="/usr/local/share/ka9q-radio/SDDC_FX3.img"
+
+ka9q_validate_rx888()
+{
+    if [[ ! -f "$RX888_MANIFEST" ]]; then
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  RX-888 preparation manifest not present"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  Continuing: RX-888 is not required for ka9q-radio"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        return 0
+    fi
+
+    # shellcheck disable=SC1090
+    source "$RX888_MANIFEST"
+
+    local firmware_path="${RX888_FW_PATH:-$RX888_DEFAULT_FIRMWARE}"
+
+    if [[ ! -f "$firmware_path" ]]; then
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: RX-888 manifest exists but firmware is missing"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  Expected: $firmware_path"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        return 1
+    fi
+
+    if [[ -n "${RX888_FW_SHA256:-}" ]]; then
+        local actual_sha256
+        actual_sha256="$(sha256sum "$firmware_path" | awk '{print $1}')"
+
+        if [[ "$actual_sha256" != "$RX888_FW_SHA256" ]]; then
+            echo -e "${SIGEDGE_BANNER_COLOR}"
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: RX-888 firmware checksum mismatch"
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  Firmware: $firmware_path"
+            echo -e "${SIGEDGE_BANNER_RESET}"
+            return 1
+        fi
+    fi
+
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  RX-888 preparation detected and validated"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  Firmware: $firmware_path"
+    echo -e "${SIGEDGE_BANNER_RESET}"
+    return 0
+}
+
+
+ka9q_show_hardware()
+{
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  Detected SDR / USB hardware"
+    echo -e "${SIGEDGE_BANNER_RESET}"
+
+    lsusb || true
+    echo
+    lsusb -t || true
+
+    if command -v hackrf_info >/dev/null 2>&1; then
+        hackrf_info 2>/dev/null || true
+    fi
+
+    if command -v rtl_test >/dev/null 2>&1; then
+        timeout 5 rtl_test -t 2>/dev/null || true
+    fi
+
+    if lsusb | grep -Eiq '04b4:(00f1|00f3|8613)'; then
+        echo "RX-888 / Cypress FX3 USB device detected"
+    fi
+}
+
+
+ka9q_verify_install()
+{
+    local failed=0
+
+    for cmd in radiod control monitor; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            command -v "$cmd"
+        else
+            echo "ERROR: $cmd not found in PATH"
+            failed=1
+        fi
+    done
+
+    if [[ -d /usr/local/lib/ka9q-radio ]]; then
+        ls -lh /usr/local/lib/ka9q-radio/
+    fi
+
+    # Dynamic front-end modules depend on the ka9q-radio build and installed
+    # development libraries.  Their absence is informational because some
+    # front ends may be built directly into radiod.
+    for module in rx888 hackrf rtlsdr; do
+        if [[ -f "/usr/local/lib/ka9q-radio/${module}.so" ]]; then
+            echo "ka9q-radio dynamic front end installed: ${module}.so"
+        fi
+    done
+
+    return "$failed"
+}
+
+
+case "$ACTION" in
+
+    remove|purge|install|build|package )
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : ka9q-radio"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        ;;&
+
+
+    remove )
+        if dpkg-query -W -f='${Status}' ka9q-radio 2>/dev/null | grep -q "install ok installed"; then
+            sudo dpkg -r ka9q-radio
+        else
+            echo "ka9q-radio Debian package is not installed"
+        fi
+
+        if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "$SIGEDGE_INSTALLED" ]]; then
+            sed -i '/ka9q-radio/d' "$SIGEDGE_INSTALLED"
+        fi
+        ;;&
+
+
+    purge )
+        if dpkg-query -W -f='${Status}' ka9q-radio 2>/dev/null | grep -q "install ok installed"; then
+            sudo dpkg -P ka9q-radio
+        else
+            sudo dpkg -P ka9q-radio 2>/dev/null || true
+        fi
+
+        if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "$SIGEDGE_INSTALLED" ]]; then
+            sed -i '/ka9q-radio/d' "$SIGEDGE_INSTALLED"
+        fi
+
+        # Do not remove RX-888 firmware, RX-888 udev rules, or RX-888 manifest.
+        # Those resources are owned by pkg_rx888.sh.
+        ;;&
+
+
+    install|build|package )
+        ## DEPENDENCIES
+        sudo apt-get update
+        sudo apt-get install -y \
+            git \
+            build-essential \
+            checkinstall \
+            rsync \
+            avahi-daemon \
+            avahi-utils \
+            libavahi-client-dev \
+            libbsd-dev \
+            libfftw3-dev \
+            libiniparser-dev \
+            libncurses-dev \
+            libncursesw5-dev \
+            libopus-dev \
+            libogg-dev \
+            libsamplerate0-dev \
+            libliquid-dev \
+            portaudio19-dev \
+            libasound2-dev \
+            uuid-dev \
+            libusb-1.0-0-dev \
+            libusb-dev \
+            libhackrf-dev \
+            hackrf \
+            librtlsdr-dev \
+            rtl-sdr
+
+        sudo systemctl enable --now avahi-daemon
+
+        if ! systemctl is-active --quiet avahi-daemon; then
+            echo -e "${SIGEDGE_BANNER_COLOR}"
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: avahi-daemon is not running"
+            echo -e "${SIGEDGE_BANNER_RESET}"
+            return 1
+        fi
+
+        # Optional RX-888 handoff validation.
+        ka9q_validate_rx888 || return 1
+        ;;&
+
+
+    install )
+        ## PACKAGE
+        if [[ -z "${SIGEDGE_DEBS:-}" ]]; then
+            echo "ERROR: SIGEDGE_DEBS is not defined"
+            return 1
+        fi
+
+        cd "$SIGEDGE_DEBS" || return 1
+
+        if [[ "${SIGEDGE_HWARCH:-}" == "x86_64" ]]; then
+            if [[ ! -f ka9q-radio_current_amd64.deb ]]; then
+                echo "ERROR: ka9q-radio_current_amd64.deb not found in $SIGEDGE_DEBS"
+                return 1
+            fi
+            sudo dpkg -i ka9q-radio_current_amd64.deb || sudo apt-get -f install -y
+        elif [[ "${SIGEDGE_HWARCH:-}" == "aarch64" ]]; then
+            if [[ ! -f ka9q-radio_current_arm64.deb ]]; then
+                echo "ERROR: ka9q-radio_current_arm64.deb not found in $SIGEDGE_DEBS"
+                return 1
+            fi
+            sudo dpkg -i ka9q-radio_current_arm64.deb || sudo apt-get -f install -y
+        else
+            echo "ERROR: Unsupported SIGEDGE_HWARCH: ${SIGEDGE_HWARCH:-undefined}"
+            return 1
+        fi
+
+        sudo ldconfig
+        sudo systemctl daemon-reload
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+
+        if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+            grep "ka9q-radio" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
+        fi
+        ;;&
+
+
+    build|package )
+        ## SOURCE / BUILD
+        if [[ -z "${SIGEDGE_SOURCE:-}" ]]; then
+            echo "ERROR: SIGEDGE_SOURCE is not defined"
+            return 1
+        fi
+
+        mkdir -p "$SIGEDGE_SOURCE"
+        cd "$SIGEDGE_SOURCE" || return 1
+
+        if [[ -d ka9q-radio/.git ]]; then
+            git -C ka9q-radio fetch --all --tags --prune
+            git -C ka9q-radio reset --hard origin/main
+        else
+            rm -rf ka9q-radio
+            git clone https://github.com/ka9q/ka9q-radio.git
+        fi
+
+        cd ka9q-radio || return 1
+        git rev-parse HEAD
+        make clean
+        make -j"$(nproc)"
+        ;;&
+
+
+    build )
+        sudo make install
+        sudo ldconfig
+        sudo systemctl daemon-reload
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+
+        if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+            grep "ka9q-radio" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
+        fi
+        ;;&
+
+
+    build|install )
+        ## VERIFY
+        ka9q_verify_install || return 1
+        ka9q_show_hardware
+
+        # Do not create or start a radio-specific radiod configuration here.
+        #
+        # This package script is intentionally hardware-neutral.  RX-888,
+        # HackRF, RTL-SDR, Airspy, and other supported front ends should be
+        # configured by a separate SIGedge radio configuration layer after
+        # ka9q-radio has been installed.
+        #
+        # RX-888-specific firmware remains owned by pkg_rx888.sh.
+        ;;&
+
+
+    package )
+        if [[ -z "${SIGEDGE_DEBS:-}" ]]; then
+            echo "ERROR: SIGEDGE_DEBS is not defined"
+            return 1
+        fi
+
+        mkdir -p "$SIGEDGE_DEBS"
+
+        # checkinstall creates the ka9q-radio .deb from the upstream
+        # make-install operation without installing it on this host.
+        sudo checkinstall \
+            --install=no \
+            --fstrans=yes \
+            --default \
+            --pkgname=ka9q-radio
+
+        shopt -s nullglob
+        debs=( ./*.deb )
+        shopt -u nullglob
+
+        if (( ${#debs[@]} == 0 )); then
+            echo "ERROR: checkinstall did not create a Debian package"
+            return 1
+        fi
+
+        for deb in "${debs[@]}"; do
+            sudo mv "$deb" "$SIGEDGE_DEBS/"
+        done
+        ;;&
+
+
+    remove|purge|install|build|package )
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : ka9q-radio - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        ;;
+esac

@@ -1,0 +1,123 @@
+#!/bin/bash
+
+###
+### SIGpi
+###
+### pkg_serialdv
+###
+###
+### 20260113-2300
+###
+### SerialDV is inspired from the OpenDV project but retains only
+### the minimal interface to encode and decode audio with AMBE3000 based devices
+### in packet mode over a serial link.
+###
+
+if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
+    echo -e "${SIGPI_BANNER_COLOR}"
+    echo -e "${SIGPI_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGPI_BANNER_RESET}"
+    exit 1
+fi
+
+case "$1" in 
+    remove|purge|install|build|package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : SerialDV"
+        echo -e "${SIGPI_BANNER_RESET}"
+        ;;&
+
+    remove )
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -r serialdv
+            sed -i /serialdv/d $SIGPI_INSTALLED
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -r serialdv
+            sed -i /serialdv/d $SIGPI_INSTALLED
+        fi
+        ;;&
+
+    purge )
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -P serialdv
+            sed -i /serialdv/d $SIGPI_INSTALLED
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+            sudo dpkg -P serialdv
+            sed -i /serialdv/d $SIGPI_INSTALLED
+        fi
+        ;;&
+
+    install )
+        ## PACKAGE
+        cd $SIGPI_PACKAGES        
+        if [[ "$SIGPI_HWARCH" == "x86_64" ]]; then
+	        cd $SIGPI_DEBS
+	        sudo dpkg -i serialdv_current_amd64.deb
+        fi
+
+        if [[ "$SIGPI_HWARCH" == "aarch64" ]]; then
+	        cd $SIGPI_DEBS
+	        sudo dpkg -i serialdv_current_arm64.deb
+        fi
+        cat $SIGPI_PKGLIST|grep "serialdv" >> $SIGPI_INSTALLED
+        ;;&
+
+    build )
+        ## DEPENDENCIES
+
+        ## PACKAGE
+        cd $SIGPI_SOURCE
+        git clone https://github.com/f4exb/serialDV.git
+        cd serialDV
+        git reset --hard "v1.1.5"
+        mkdir build; cd build
+        cmake -Wno-dev ..
+        make -j4
+        sudo make install
+        sudo ldconfig
+        cat $SIGPI_PKGLIST|grep "serialdv" >> $SIGPI_INSTALLED
+
+        ## DESKTOP
+	    # Add Icon
+        # Add Desktop
+        # Change Category
+	    # Add to Menu
+        ;;&
+
+    package )
+        ## DEPENDENCIES
+
+        ## PACKAGE
+        cd $SIGPI_SOURCE
+        git clone https://github.com/f4exb/serialDV.git
+        cd serialDV
+        git reset --hard "v1.1.5"
+        mkdir build; cd build
+        cmake -Wno-dev ..
+        make -j4
+        sudo checkinstall --install=no
+        sudo mv *.deb $SIGPI_DEBS
+        
+        ## DESKTOP
+	    # Add Icon
+        # Add Desktop
+        # Change Category
+	    # Add to Menu
+        ;;&
+
+     remove|purge|install|build|package )
+        echo -e "${SIGPI_BANNER_COLOR}"
+        echo -e "${SIGPI_BANNER_COLOR} ##  $1 : SerialDV - Completed"
+        echo -e "${SIGPI_BANNER_RESET}"
+        ;;
+esac

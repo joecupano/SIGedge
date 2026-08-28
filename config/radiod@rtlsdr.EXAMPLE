@@ -1,0 +1,15 @@
+[global]
+hardware = rtlsdr
+status = rtlsdr-simplex.local
+mode = fm
+ttl = 1
+data = rtlsdr-simplex-pcm.local
+
+[rtlsdr]
+device = rtlsdr
+description = "SIGedge RTL-SDR simplex 144.650 MHz"
+samprate = 1800000
+frequency = 144900000
+
+[simplex-144650]
+freq = "144m650"

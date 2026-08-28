@@ -1,0 +1,396 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### cfg_ka9q-radio
+###
+###
+### 20260827-2355
+###
+### Generate ka9q-radio radiod configurations for:
+###   RX-888  - WWV 10.000 MHz AM
+###   HackRF  - APRS 144.390 MHz FM
+###   RTL-SDR - Amateur simplex 144.650 MHz FM
+###
+### This script may be executed directly or sourced by a SIGedge parent script.
+### It assumes ka9q-radio is already installed.
+###
+### Usage:
+###   sudo ./cfg_ka9q-radio.sh [all|rx888|hackrf|rtlsdr]
+###   source ./cfg_ka9q-radio.sh [all|rx888|hackrf|rtlsdr]
+###
+### Optional environment variables:
+###   KA9Q_IFACE=<interface>          Bind multicast to a specific interface.
+###                                  If unset, radiod selects the interface.
+###   KA9Q_TTL=<ttl>                 Multicast TTL. Default: 1
+###   KA9Q_ENABLE_SERVICES=0|1       Enable generated systemd services. Default: 1
+###   KA9Q_START_SERVICES=0|1        Start/restart generated services. Default: 0
+###
+### Device-selection overrides:
+###   RX888_SERIAL=<serial>
+###   HACKRF_SERIAL=<serial>
+###   RTLSDR_SERIAL=<serial>
+###
+### Hardware center-frequency overrides:
+###   HACKRF_CENTER_HZ=<Hz>           Default: 144640000
+###   RTLSDR_CENTER_HZ=<Hz>           Default: 144900000
+###
+### The HackRF and RTL-SDR tuner centers are intentionally offset +250 kHz
+### from the desired channel to avoid placing the wanted signal at DC/zero IF.
+###
+
+ACTION="${1:-all}"
+
+KA9Q_CONFIG_DIR="${KA9Q_CONFIG_DIR:-/etc/radio}"
+KA9Q_IFACE="${KA9Q_IFACE:-}"
+KA9Q_TTL="${KA9Q_TTL:-1}"
+KA9Q_ENABLE_SERVICES="${KA9Q_ENABLE_SERVICES:-1}"
+KA9Q_START_SERVICES="${KA9Q_START_SERVICES:-0}"
+
+RX888_SERIAL="${RX888_SERIAL:-}"
+HACKRF_SERIAL="${HACKRF_SERIAL:-}"
+RTLSDR_SERIAL="${RTLSDR_SERIAL:-}"
+
+HACKRF_CENTER_HZ="${HACKRF_CENTER_HZ:-144640000}"
+RTLSDR_CENTER_HZ="${RTLSDR_CENTER_HZ:-144900000}"
+
+RX888_CONFIG="${KA9Q_CONFIG_DIR}/radiod@rx888-wwv.conf"
+HACKRF_CONFIG="${KA9Q_CONFIG_DIR}/radiod@hackrf-aprs.conf"
+RTLSDR_CONFIG="${KA9Q_CONFIG_DIR}/radiod@rtlsdr-simplex.conf"
+
+RX888_SERVICE="radiod@rx888-wwv"
+HACKRF_SERVICE="radiod@hackrf-aprs"
+RTLSDR_SERVICE="radiod@rtlsdr-simplex"
+
+
+cfg_return()
+{
+    local rc="$1"
+
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+        return "$rc"
+    fi
+
+    exit "$rc"
+}
+
+
+cfg_error()
+{
+    echo -e "${SIGEDGE_BANNER_COLOR:-}"
+    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: $*"
+    echo -e "${SIGEDGE_BANNER_RESET:-}"
+}
+
+
+cfg_banner()
+{
+    echo -e "${SIGEDGE_BANNER_COLOR:-}"
+    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  $*"
+    echo -e "${SIGEDGE_BANNER_RESET:-}"
+}
+
+
+if [[ ! "$ACTION" =~ ^(all|rx888|hackrf|rtlsdr)$ ]]; then
+    cfg_error "Unknown SDR selection: $ACTION"
+    echo "Usage: ${BASH_SOURCE[0]} [all|rx888|hackrf|rtlsdr]"
+    cfg_return 1
+fi
+
+
+if ! command -v radiod >/dev/null 2>&1; then
+    cfg_error "radiod is not installed or is not in PATH"
+    cfg_return 1
+fi
+
+
+if ! sudo -n true 2>/dev/null; then
+    # This intentionally allows sudo to prompt when a cached credential is not present.
+    sudo true || {
+        cfg_error "sudo privileges are required"
+        cfg_return 1
+    }
+fi
+
+
+sudo mkdir -p "$KA9Q_CONFIG_DIR" || {
+    cfg_error "Unable to create $KA9Q_CONFIG_DIR"
+    cfg_return 1
+}
+
+
+backup_config()
+{
+    local config="$1"
+
+    if [[ -f "$config" ]]; then
+        local stamp
+        stamp="$(date +%Y%m%d-%H%M%S)"
+        sudo cp -a "$config" "${config}.${stamp}.bak" || return 1
+        echo "Backed up: $config -> ${config}.${stamp}.bak"
+    fi
+}
+
+
+emit_iface()
+{
+    if [[ -n "$KA9Q_IFACE" ]]; then
+        printf 'iface = %s\n' "$KA9Q_IFACE"
+    fi
+}
+
+
+emit_serial()
+{
+    local serial="$1"
+
+    if [[ -n "$serial" ]]; then
+        printf 'serial = %s\n' "$serial"
+    fi
+}
+
+
+write_rx888()
+{
+    cfg_banner "Generating RX-888 WWV configuration"
+
+    backup_config "$RX888_CONFIG" || return 1
+
+    {
+        cat <<EOF
+# SIGedge ka9q-radio configuration
+# SDR: RX-888 MkII
+# Signal: WWV
+# Channel: 10.000 MHz
+# Mode: AM
+#
+# RX-888 is operated in direct-sampling mode at 64.8 Msps.
+# SDDC_FX3.img is the normal ka9q-radio firmware default and is expected
+# under /usr/local/share/ka9q-radio when pkg_rx888.sh has been installed.
+
+[global]
+hardware = rx888
+status = rx888-wwv.local
+mode = am
+ttl = ${KA9Q_TTL}
+data = rx888-wwv-pcm.local
+EOF
+        emit_iface
+        cat <<EOF
+
+[rx888]
+device = rx888
+description = "SIGedge RX-888 WWV 10 MHz"
+samprate = 64800000
+firmware = SDDC_FX3.img
+EOF
+        emit_serial "$RX888_SERIAL"
+        cat <<'EOF'
+
+[wwv-10mhz]
+freq = "10m0"
+EOF
+    } | sudo tee "$RX888_CONFIG" >/dev/null || return 1
+
+    sudo chmod 0664 "$RX888_CONFIG" || return 1
+    echo "Created: $RX888_CONFIG"
+}
+
+
+write_hackrf()
+{
+    cfg_banner "Generating HackRF APRS configuration"
+
+    backup_config "$HACKRF_CONFIG" || return 1
+
+    {
+        cat <<EOF
+# SIGedge ka9q-radio configuration
+# SDR: HackRF One
+# Signal: APRS
+# Channel: 144.390 MHz
+# Mode: FM
+#
+# The hardware center frequency is offset +250 kHz from the desired
+# channel by default to keep the wanted signal away from zero IF/DC.
+# Override with HACKRF_CENTER_HZ if required.
+
+[global]
+hardware = hackrf
+status = hackrf-aprs.local
+mode = fm
+ttl = ${KA9Q_TTL}
+data = hackrf-aprs-pcm.local
+EOF
+        emit_iface
+        cat <<EOF
+
+[hackrf]
+device = hackrf
+description = "SIGedge HackRF APRS 144.390 MHz"
+frequency = ${HACKRF_CENTER_HZ}
+EOF
+        emit_serial "$HACKRF_SERIAL"
+        cat <<'EOF'
+
+[aprs-144390]
+freq = "144m390"
+EOF
+    } | sudo tee "$HACKRF_CONFIG" >/dev/null || return 1
+
+    sudo chmod 0664 "$HACKRF_CONFIG" || return 1
+    echo "Created: $HACKRF_CONFIG"
+}
+
+
+write_rtlsdr()
+{
+    cfg_banner "Generating RTL-SDR simplex configuration"
+
+    backup_config "$RTLSDR_CONFIG" || return 1
+
+    {
+        cat <<EOF
+# SIGedge ka9q-radio configuration
+# SDR: RTL-SDR
+# Signal: Amateur-radio voice simplex
+# Channel: 144.650 MHz
+# Mode: FM
+#
+# The hardware center frequency is offset +250 kHz from the desired
+# channel by default to keep the wanted signal away from zero IF/DC.
+# Override with RTLSDR_CENTER_HZ if required.
+
+[global]
+hardware = rtlsdr
+status = rtlsdr-simplex.local
+mode = fm
+ttl = ${KA9Q_TTL}
+data = rtlsdr-simplex-pcm.local
+EOF
+        emit_iface
+        cat <<EOF
+
+[rtlsdr]
+device = rtlsdr
+description = "SIGedge RTL-SDR simplex 144.650 MHz"
+samprate = 1800000
+frequency = ${RTLSDR_CENTER_HZ}
+EOF
+        emit_serial "$RTLSDR_SERIAL"
+        cat <<'EOF'
+
+[simplex-144650]
+freq = "144m650"
+EOF
+    } | sudo tee "$RTLSDR_CONFIG" >/dev/null || return 1
+
+    sudo chmod 0664 "$RTLSDR_CONFIG" || return 1
+    echo "Created: $RTLSDR_CONFIG"
+}
+
+
+service_action()
+{
+    local service="$1"
+
+    if [[ "$KA9Q_ENABLE_SERVICES" == "1" ]]; then
+        sudo systemctl enable "$service" || return 1
+    fi
+
+    if [[ "$KA9Q_START_SERVICES" == "1" ]]; then
+        sudo systemctl restart "$service" || return 1
+    fi
+}
+
+
+validate_file()
+{
+    local config="$1"
+
+    if [[ ! -s "$config" ]]; then
+        cfg_error "Configuration was not created: $config"
+        return 1
+    fi
+
+    echo
+    echo "----- $config -----"
+    sudo cat "$config"
+    echo "--------------------"
+}
+
+
+case "$ACTION" in
+    rx888)
+        write_rx888 || cfg_return 1
+        validate_file "$RX888_CONFIG" || cfg_return 1
+        sudo systemctl daemon-reload
+        service_action "$RX888_SERVICE" || cfg_return 1
+        ;;
+
+    hackrf)
+        write_hackrf || cfg_return 1
+        validate_file "$HACKRF_CONFIG" || cfg_return 1
+        sudo systemctl daemon-reload
+        service_action "$HACKRF_SERVICE" || cfg_return 1
+        ;;
+
+    rtlsdr)
+        write_rtlsdr || cfg_return 1
+        validate_file "$RTLSDR_CONFIG" || cfg_return 1
+        sudo systemctl daemon-reload
+        service_action "$RTLSDR_SERVICE" || cfg_return 1
+        ;;
+
+    all)
+        write_rx888 || cfg_return 1
+        write_hackrf || cfg_return 1
+        write_rtlsdr || cfg_return 1
+
+        validate_file "$RX888_CONFIG" || cfg_return 1
+        validate_file "$HACKRF_CONFIG" || cfg_return 1
+        validate_file "$RTLSDR_CONFIG" || cfg_return 1
+
+        sudo systemctl daemon-reload
+
+        service_action "$RX888_SERVICE" || cfg_return 1
+        service_action "$HACKRF_SERVICE" || cfg_return 1
+        service_action "$RTLSDR_SERVICE" || cfg_return 1
+        ;;
+esac
+
+
+cfg_banner "ka9q-radio SDR configuration generation completed"
+
+echo "Generated configuration:"
+case "$ACTION" in
+    rx888)
+        echo "  $RX888_CONFIG"
+        ;;
+    hackrf)
+        echo "  $HACKRF_CONFIG"
+        ;;
+    rtlsdr)
+        echo "  $RTLSDR_CONFIG"
+        ;;
+    all)
+        echo "  $RX888_CONFIG"
+        echo "  $HACKRF_CONFIG"
+        echo "  $RTLSDR_CONFIG"
+        ;;
+esac
+
+echo
+echo "Services are enabled: $KA9Q_ENABLE_SERVICES"
+echo "Services were started/restarted: $KA9Q_START_SERVICES"
+
+if [[ "$KA9Q_START_SERVICES" != "1" ]]; then
+    echo
+    echo "To start a configured receiver:"
+    echo "  sudo systemctl start $RX888_SERVICE"
+    echo "  sudo systemctl start $HACKRF_SERVICE"
+    echo "  sudo systemctl start $RTLSDR_SERVICE"
+fi
+
+cfg_return 0

@@ -1,0 +1,146 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### pkg_ka9q-radio
+###
+###
+### 20260827-2300
+###
+### ka9q-radio package management script
+###
+###
+
+if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
+    echo -e "${SIGEDGE_BANNER_COLOR}"
+    echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
+    echo -e "${SIGEDGE_BANNER_RESET}"
+    exit 1
+fi
+
+case "$1" in 
+    remove|purge|install|build|package )
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : ka9q-radio"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        ;;&
+
+    remove )
+        sudo dpkg -r ka9q-radio
+        sed -i /ka9q-radio/d $SIGEDGE_INSTALLED
+        ;;&
+
+    purge )
+        sudo dpkg -P ka9q-radio
+        sed -i /ka9q-radio/d $SIGEDGE_INSTALLED
+        ;;&
+
+    install|build|package )
+        ## DEPENDENCIES
+        sudo apt install -y rsync
+        sudo apt install -y avahi-daemon
+        sudo apt install -y avahi-utils
+        sudo apt install -y libavahi-client-dev
+        sudo apt install -y libbsd-dev
+        sudo apt install -y libfftw3-dev
+        sudo apt install -y libiniparser-dev
+        sudo apt install -y libncurses-dev
+        sudo apt install -y libncursesw5-dev
+        sudo apt install -y libopus-dev
+        sudo apt install -y libogg-dev
+        sudo apt install -y libsamplerate0-dev
+        sudo apt install -y libliquid-dev
+        sudo apt install -y portaudio19-dev
+        sudo apt install -y libasound2-dev
+        sudo apt install -y uuid-dev
+        sudo apt install -y libusb-1.0-0-dev
+        sudo apt install -y libusb-dev
+        sudo apt install -y libhackrf-dev
+        sudo apt install -y hackrf
+        sudo apt install -y librtlsdr-dev
+        sudo apt install -y rtl-sdr
+
+        sudo systemctl enable --now avahi-daemon
+        systemctl status avahi-daemon
+        ;;&
+
+    install )
+        ## PACKAGE
+        cd $SIGEDGE_PACKAGES        
+        if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
+	        cd $SIGEDGE_DEBS
+	        sudo dpkg -i ka9q-radio_current_amd64.deb
+        fi
+
+        if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
+	        cd $SIGEDGE_DEBS
+	        sudo dpkg -i ka9q-radio_current_arm64.deb
+        fi
+        cat $SIGEDGE_PKGLIST|grep "ka9q-radio" >> $SIGEDGE_INSTALLED 
+        
+        ### FFTW-WISDOM CHECK AND LINK
+        #mkdir $HOME/.config/f4exb
+        #mkdir $HOME/.local/share/f4exb
+        #mkdir $HOME/.local/share/f4exb/SDRangel
+        #if [ ! -f "$SIGEDGE_ETC/fftw-wisdom" ]; then
+        #    fftwf-wisdom -v -n -o $SIGEDGE_ETC/fftw-wisdom 128 256 512 1024 2048 4096 8192 16384 32768
+        #fi
+        #cp $SIGEDGE_ETC/fftw-wisdom $HOME/.local/share/f4exb/SDRangel/fftw-wisdom
+        #cp $SIGEDGE_ETC/fftw-wisdom $HOME/.config/f4exb/SDRangel/fftw-wisdom
+        ;;&
+
+    build|package )
+        ## PACKAGE
+        cd $SIGEDGE_SOURCE
+        git clone https://github.com/ka9q/ka9q-radio.git
+        cd ka9q-radio
+        git rev-parse HEAD
+        #git reset --hard 7809e85   # 20260827
+        make -j"$(nproc)"
+        ;;&
+
+    build )
+        sudo make install
+        sudo ldconfig
+        sudo systemctl daemon-reload
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+        ;;&
+
+    build|install )
+        which radiod
+        which control
+        which monitor
+        ls -lh /usr/local/lib/ka9q-radio/
+        lsusb
+        lsusb -t
+        sudo dmesg --follow
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  ka9q-radio with RX-888 usage"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##"
+        echo -e "${SIGEDGE_BANNER_COLOR} ## Unplug the RX-888, wait 15 seconds then replug the RX-888"
+        echo -e "${SIGEDGE_BANNER_COLOR} ## before continuing."
+        echo -e "${SIGEDGE_BANNER_COLOR} ##"
+        input(" ## Press Enter to continue when you have done this...")
+        echo -e "${SIGEDGE_BANNER_COLOR} ##"
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        ;;&
+
+    package )
+        sudo checkinstall --install=no
+        sudo mv *.deb $SIGEDGE_DEBS
+        ;;&
+    
+    remove|purge|install|build|package )
+        echo -e "${SIGEDGE_BANNER_COLOR}"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : ka9q-radio - Completed"
+        echo -e "${SIGEDGE_BANNER_RESET}"
+        ;;
+esac
+
+
+
+

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### setup_services
+###
+###
+### 20260827-2300
+###
+### Install service daemons
+###
+
+echo -e "${SIGPI_BANNER_COLOR}"
+echo -e "${SIGPI_BANNER_COLOR} ##"
+echo -e "${SIGPI_BANNER_COLOR} ##  Setup Services"
+echo -e "${SIGPI_BANNER_COLOR} ##"
+echo -e "${SIGPI_BANNER_RESET}"
+
+# Generate FFT Wisdom file
+source $SIGPI_PACKAGES/pkg_fftw install
+# Install RTL_433
+source $SIGPI_PACKAGES/pkg_rtl_433 install
+# Install KA9Q-radio
+source $SIGPI_PACKAGES/pkg_ka9q-radio install
+
+echo -e "${SIGPI_BANNER_COLOR}"
+echo -e "${SIGPI_BANNER_COLOR} ##  Setup Packages complete"
+echo -e "${SIGPI_BANNER_RESET}"
