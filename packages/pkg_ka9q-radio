@@ -17,10 +17,6 @@
 
 ACTION="$1"
 
-echo -e "${SIGEDGE_BANNER_COLOR}"
-echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : ka9q-radio"
-echo -e "${SIGEDGE_BANNER_RESET}"
-
 # Upstream main is active development and may temporarily contain incomplete
 # changes.  Keep fresh SIGedge builds reproducible while allowing an operator
 # to select a different tested revision explicitly.
@@ -33,6 +29,9 @@ if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
     return 1
 fi
 
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : ka9q-radio"
+echo -e "${SIGEDGE_BANNER_RESET}"
 
 ### OPTIONAL RX-888 INTEGRATION
 ###
