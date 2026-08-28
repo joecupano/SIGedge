@@ -6,7 +6,7 @@
 ### pkg_ka9q-radio
 ###
 ###
-### 20260827-2300
+### 20260828-0629
 ###
 ### ka9q-radio package management script
 ###
@@ -16,6 +16,11 @@
 ###
 
 ACTION="$1"
+
+# Upstream main is active development and may temporarily contain incomplete
+# changes.  Keep fresh SIGedge builds reproducible while allowing an operator
+# to select a different tested revision explicitly.
+KA9Q_RADIO_REF="${KA9Q_RADIO_REF:-2ecfe43de8358729d15fc50fd08dd819d39ed2ec}"
 
 if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
     echo -e "${SIGEDGE_BANNER_COLOR}"
@@ -180,7 +185,7 @@ case "$ACTION" in
 
     install|build|package )
         ## DEPENDENCIES
-        sudo apt-get update
+        sudo apt-get update || return 1
         sudo apt-get install -y \
             git \
             build-essential \
@@ -197,6 +202,7 @@ case "$ACTION" in
             libopus-dev \
             libogg-dev \
             libsamplerate0-dev \
+            libcsv-dev \
             libliquid-dev \
             portaudio19-dev \
             libasound2-dev \
@@ -206,9 +212,9 @@ case "$ACTION" in
             libhackrf-dev \
             hackrf \
             librtlsdr-dev \
-            rtl-sdr
+            rtl-sdr || return 1
 
-        sudo systemctl enable --now avahi-daemon
+        sudo systemctl enable --now avahi-daemon || return 1
 
         if ! systemctl is-active --quiet avahi-daemon; then
             echo -e "${SIGEDGE_BANNER_COLOR}"
@@ -270,26 +276,46 @@ case "$ACTION" in
         cd "$SIGEDGE_SOURCE" || return 1
 
         if [[ -d ka9q-radio/.git ]]; then
-            git -C ka9q-radio fetch --all --tags --prune
-            git -C ka9q-radio reset --hard origin/main
+            git -C ka9q-radio fetch --all --tags --prune || return 1
         else
             rm -rf ka9q-radio
-            git clone https://github.com/ka9q/ka9q-radio.git
+            git clone https://github.com/ka9q/ka9q-radio.git || return 1
         fi
+
+        git -C ka9q-radio rev-parse --verify "${KA9Q_RADIO_REF}^{commit}" >/dev/null || return 1
+        git -C ka9q-radio reset --hard "$KA9Q_RADIO_REF" || return 1
 
         cd ka9q-radio || return 1
         git rev-parse HEAD
-        make clean
-        make -j"$(nproc)"
+        make clean || return 1
+        make -j"$(nproc)" ENABLE_AIRSPY=0 \
+            ENABLE_AIRSPYHF=0 \
+            ENABLE_BLADERF=0 \
+            ENABLE_FOBOS=0 \
+            ENABLE_FUNCUBE=0 \
+            ENABLE_HACKRF=1 \
+            ENABLE_HYDRASDR=0 \
+            ENABLE_RTLSDR=1 \
+            ENABLE_RX888=1 \
+            ENABLE_SIG_GEN=1 || return 1
         ;;&
 
 
     build )
-        sudo make install
-        sudo ldconfig
-        sudo systemctl daemon-reload
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger
+        sudo make install ENABLE_AIRSPY=0 \
+            ENABLE_AIRSPYHF=0 \
+            ENABLE_BLADERF=0 \
+            ENABLE_FOBOS=0 \
+            ENABLE_FUNCUBE=0 \
+            ENABLE_HACKRF=1 \
+            ENABLE_HYDRASDR=0 \
+            ENABLE_RTLSDR=1 \
+            ENABLE_RX888=1 \
+            ENABLE_SIG_GEN=1 || return 1
+        sudo ldconfig || return 1
+        sudo systemctl daemon-reload || return 1
+        sudo udevadm control --reload-rules || return 1
+        sudo udevadm trigger || return 1
 
         if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
             grep "ka9q-radio" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
@@ -327,7 +353,17 @@ case "$ACTION" in
             --install=no \
             --fstrans=yes \
             --default \
-            --pkgname=ka9q-radio
+            --pkgname=ka9q-radio \
+            make install ENABLE_AIRSPY=0 \
+            ENABLE_AIRSPYHF=0 \
+            ENABLE_BLADERF=0 \
+            ENABLE_FOBOS=0 \
+            ENABLE_FUNCUBE=0 \
+            ENABLE_HACKRF=1 \
+            ENABLE_HYDRASDR=0 \
+            ENABLE_RTLSDR=1 \
+            ENABLE_RX888=1 \
+            ENABLE_SIG_GEN=1 || return 1
 
         shopt -s nullglob
         debs=( ./*.deb )
