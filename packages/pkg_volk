@@ -6,7 +6,7 @@
 ### pkg_volk
 ###
 ###
-###  20260113-2300
+###  20260828-1902
 ###
 
 if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
@@ -51,6 +51,16 @@ case "$1" in
             sudo dpkg -P volk
             sed -i /volk/d $SIGEDGE_INSTALLED
         fi
+        ;;&
+
+    install|build|package )
+        ## DEPENDENCIES
+        sudo apt-get install -y python3
+        ;;&
+
+    build|package )
+        ## BUILD DEPENDENCIES
+        sudo apt-get install -y python3-mako
         ;;&
 
     install)

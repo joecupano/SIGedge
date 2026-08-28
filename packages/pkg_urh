@@ -6,7 +6,7 @@
 ### pkg_urh
 ###
 ###
-### 20260113-2300
+### 20260828-1902
 ###
 ### Universal Radio hacker install
 ###
@@ -40,8 +40,9 @@ case "$1" in
 
     install|build )
         ## DEPENDENCIES
-        sudo python3 -m pip install setuptools
-        sudo python3 -m pip install cython
+        sudo apt-get install -y build-essential cython3 python3 python3-dev
+        sudo apt-get install -y python3-numpy python3-pip python3-psutil
+        sudo apt-get install -y python3-pyqt6 python3-setuptools
 
         ## PACKAGE
         cd $SIGEDGE_PACKAGES
@@ -49,7 +50,7 @@ case "$1" in
 	        cd $SIGEDGE_SOURCE
             git clone https://github.com/jopohl/urh.git
             cd urh
-            sudo python setup.py install
+            sudo python3 setup.py install
 
             ## DESKTOP
 	        # Add Icon
