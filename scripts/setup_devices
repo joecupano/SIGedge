@@ -32,7 +32,14 @@ sudo cmake --install SDDC_Driver/build || return 1
 sudo ldconfig
 
 # SoapyRemote plumbing is installed. No SoapySDRServer unit is enabled here.
+#
+# The soapyremote-server .deb enables and starts its own systemd unit via
+# postinst (a systemd preset default, independent of this script's intent),
+# so an explicit disable+stop is required to actually honor the comment
+# above -- otherwise it silently starts network-accessible remote SDR
+# access, which can fight radiod for ownership of the same hardware.
 sudo apt-get install -y soapyremote-server soapysdr-module-remote
+sudo systemctl disable --now soapyremote-server.service || true
 
 # AX.25 support is used by packet-radio services such as APRS.
 source "$SIGEDGE_PACKAGES/pkg_ax25" install || return 1
