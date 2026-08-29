@@ -2,24 +2,21 @@
 
 SIGedge is an SDR edge platform for turning attached radio hardware into RF, IQ, and audio services for network-connected consumers. Typical consumers include analytics and AI workflows, recorders, decoders, operator tools, SDRangel, OpenWebRX+, and custom applications.
 
-The preferred interface from a SIGedge node to upper-layer network services is **ka9q-radio**. Its `radiod` instances own the selected SDR hardware and publish control, status, IQ, and demodulated streams over IP multicast.
+SIGedge supports **two separate, mutually exclusive ways to expose an SDR** — pick one per device, never both at once:
 
 ```text
-SDR hardware -> ka9q-radio radiod -> RTP/IP multicast -> network services
+SDR hardware -> ka9q-radio radiod -> RTP/IP multicast -> any number of network consumers
+SDR hardware -> direct-access app (SoapySDR / SoapyRemote) -> one exclusive owner
 ```
 
-SIGedge also installs plumbing that allows applications to access supported SDRs directly, including SoapySDR-based paths. This is an alternative integration path for applications that cannot consume ka9q-radio services; it is not the primary SIGedge service architecture.
+| | ka9q-radio (primary) | Direct SDR access (alternative) |
+|---|---|---|
+| How it's exposed | `radiod` owns the hardware and republishes IQ/audio/control as IP multicast RTP | A single application opens the SDR directly, locally via SoapySDR or over the network via SoapyRemote |
+| Consumers | Any number of network clients can subscribe to the multicast streams | Exactly one application at a time |
+| Use it when | You want SIGedge itself to act as a shared SDR server for other systems | A specific app (SDRangel, OpenWebRX+, GQRX, CubicSDR, `rtl_tcp`, ...) needs raw, exclusive access to the hardware |
+| Setup section | [ka9q-radio: use and setup](#ka9q-radio-use-and-setup) | [Direct SDR use, including SoapySDR](#direct-sdr-use-including-soapysdr) |
 
-## Default service policy
-
-Installation and activation are separate:
-
-- The standard setup installs SDR drivers and supporting components.
-- ka9q-radio support is installed, but no radio-specific `radiod` instance is configured, enabled, or started by default.
-- Direct SDR network-service plumbing is installed, but it is not enabled by default.
-- The operator must explicitly choose a service path and the SDR assigned to it.
-
-Only one service should own an SDR at a time. Do not start a direct-access service for a device already owned by `radiod`, or start `radiod` for a device in use by SDRangel, OpenWebRX+, SoapyRemote, `rtl_tcp`, or another application.
+**An SDR must have exactly one active owner.** Do not start a direct-access application against a device that a `radiod` instance already owns, and do not start `radiod` for a device in use by SDRangel, OpenWebRX+, SoapyRemote, `rtl_tcp`, or another application. Two different physical SDRs on the same host can run under two different owners simultaneously (e.g. HackRF under `radiod`, RTL-SDR handed to a direct-access app) — the constraint is per device, not per host.
 
 ## Architecture
 
@@ -49,7 +46,7 @@ The current target operating system is Ubuntu Server 24.04 LTS on:
 
 Actual compute, USB, network, and storage requirements depend on the SDR sample rates and the number and type of downstream channels.
 
-## Setup
+## SIGedge installation and setup
 
 On a fresh Ubuntu Server 24.04 LTS installation:
 
@@ -62,22 +59,27 @@ cd SIGedge
 ./SIGedge setup
 ```
 
-Setup presents device and service choices, installs the selected components, and reboots the system when complete. RTL-SDR and HackRF are the default device selections; other supported devices can be selected during setup or installed later.
-
-> **Current ka9q-radio packaging status:** the repository does not include the prebuilt ka9q-radio `.deb` files expected by the standard install action. A clean checkout must currently use the source-build path described in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) or supply the appropriate package.
-
-To add a device after initial setup:
+Setup presents device and service choices, installs the selected components, and reboots the system when complete. RTL-SDR and HackRF are the default device selections; other supported devices can be selected during setup or installed later:
 
 ```bash
 SIGedge device install <device>
 ```
 
-## Package management
+Installation and activation are always kept separate, for both deployment paths:
+
+- The standard setup installs SDR drivers, ka9q-radio support, and direct-access (SoapySDR) plumbing.
+- No radio-specific `radiod` instance is configured, enabled, or started by default.
+- Direct-access network-service plumbing (SoapyRemote) is installed, but its network service is left disabled and stopped by default.
+- The operator must explicitly choose a service path per device and enable it.
+
+### Package management
 
 List the package library and show installed entries:
 
 ```bash
 SIGedge list library
+SIGedge list installed
+SIGedge list packages
 ```
 
 Manage an individual package with:
@@ -95,9 +97,39 @@ SIGedge build <package>
 SIGedge package <package>
 ```
 
-## Opting in to ka9q-radio
+## ka9q-radio: use and setup
 
-SIGedge includes a separate configuration layer for radio missions. The current reference configurations are:
+`ka9q-radio` is the primary, recommended way to get RF/IQ/audio out of a SIGedge node onto the network. `radiod` owns the SDR hardware; consumers subscribe to its multicast RTP streams rather than opening the device themselves.
+
+### Install ka9q-radio
+
+Upstream ka9q-radio ships its own native Debian packaging, split into about 18 binary packages (one per front end/subsystem). SIGedge builds and installs only the subset its reference missions use: the core daemon, shared files, the `rx888`/`hackrf`/`rtlsdr` front ends, and the interactive tools.
+
+Reproducible, dpkg-tracked path (recommended — `remove`/`purge` work cleanly against it afterward):
+
+```bash
+./SIGedge package ka9q-radio   # builds .deb files into debs/ka9q-radio/
+./SIGedge install ka9q-radio   # installs them via apt-get
+```
+
+Quick manual test-build path (raw `make install` to `/usr/local`, not tracked by dpkg; clean up with `make uninstall`/`make purge` in the source tree, not `SIGedge remove`):
+
+```bash
+./SIGedge build ka9q-radio
+```
+
+`./SIGedge setup` and `scripts/setup_services` use the packaged path automatically once `debs/ka9q-radio/` has been populated by `SIGedge package ka9q-radio`; otherwise they fall back to the build path on a clean checkout.
+
+Verify the install:
+
+```bash
+command -v radiod control monitor
+systemctl is-active avahi-daemon
+```
+
+### Configure and activate a mission
+
+SIGedge includes a separate configuration layer for radio missions, kept deliberately independent of installation. The current reference configurations are:
 
 | SDR | Channel | Mode | Service instance |
 |---|---:|---|---|
@@ -108,18 +140,58 @@ SIGedge includes a separate configuration layer for radio missions. The current 
 Running the configuration script is an explicit opt-in. For example, to generate the HackRF reference instance without enabling or starting it:
 
 ```bash
-KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+KA9Q_IFACE=<your-iface> KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
   bash scripts/cfg_ka9q-radio hackrf
 ```
 
-After reviewing the generated configuration, enable and start that receiver explicitly:
+Review the generated `/etc/radio/radiod@hackrf-aprs.conf`, then enable and start that receiver explicitly:
 
 ```bash
-sudo systemctl enable radiod@hackrf-aprs
-sudo systemctl start radiod@hackrf-aprs
+sudo systemctl enable --now radiod@hackrf-aprs
 ```
 
-The configuration script also accepts `rx888`, `rtlsdr`, or `all`. Set `KA9Q_IFACE` when multicast must use a specific network interface. Multicast TTL defaults to 1 for local-segment distribution.
+The configuration script also accepts `rx888`, `rtlsdr`, or `all`. Set `KA9Q_IFACE` when multicast must use a specific network interface (recommended on any host with more than one). Multicast TTL defaults to 1 for local-segment distribution.
+
+Confirm a receiver is actually up:
+
+```bash
+systemctl status radiod@hackrf-aprs
+avahi-browse -art
+```
+
+Full deployment details, RX-888 firmware bring-up, and current implementation limitations are documented in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md).
+
+## Direct SDR use, including SoapySDR
+
+Some applications need to open an SDR directly rather than consuming a `radiod` multicast stream — for example, SDRangel, OpenWebRX+, GQRX, CubicSDR, or vendor tools like `hackrf_transfer`/`rtl_tcp`. SIGedge installs the plumbing for this path but does not activate it by default, and it is a separate deployment from ka9q-radio: **do not point a direct-access app at a device `radiod` already owns.**
+
+`./SIGedge setup` (via `scripts/setup_devices`) installs:
+
+- Generic SoapySDR tooling and headers (`soapysdr-tools`, `libsoapysdr-dev`) for applications that link against SoapySDR locally on the same host.
+- The RX-888 SoapySDR driver (SDDC_Driver), for direct-access RX-888 use outside of ka9q-radio.
+- `soapyremote-server` and `soapysdr-module-remote`, for exposing SoapySDR devices to *remote* network clients over SoapyRemote's own protocol.
+
+### Local direct access
+
+An application built against SoapySDR (or a device-specific tool such as `rtl_tcp`, `hackrf_transfer`, `hackrf_info`) can open a locally attached, supported SDR directly once its driver package is installed via `SIGedge device install <device>`. No additional SIGedge service needs to be enabled for this — it's just the application and the hardware.
+
+### Remote direct access (SoapyRemote)
+
+`soapyremote-server` lets a remote SoapySDR client discover and stream from this host's SDRs over the network. Because that's a much bigger exposure than local-only access, SIGedge always leaves it **disabled and stopped** after install — enabling it is an explicit, separate opt-in:
+
+```bash
+sudo systemctl enable --now soapyremote-server.service
+```
+
+Verify it's actually running before relying on it, and stop it when you're done:
+
+```bash
+systemctl is-active soapyremote-server.service
+avahi-browse -rt _soapy._tcp   # confirms it's discoverable on the network
+sudo systemctl disable --now soapyremote-server.service
+```
+
+Before enabling it, make sure none of the SDRs it would expose are already owned by a running `radiod` instance (`systemctl status radiod@*`) — SoapyRemote does not know or care that another process has a device open, and a collision there fails at the driver/USB level, not gracefully.
 
 ## Network and hardware notes
 
@@ -128,4 +200,6 @@ The configuration script also accepts `rx888`, `rtlsdr`, or `all`. Set `KA9Q_IFA
 - Disable onboard Bluetooth and Wi-Fi on dedicated receive nodes when they are unnecessary and local RF emissions are a concern.
 - Size powered USB hubs and power supplies for the attached devices; do not assume every hub port can supply its maximum current simultaneously.
 
-Current ka9q-radio deployment instructions and implementation limitations are documented in [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md). Development context for the current integration work is recorded in [HANDOFF.md](HANDOFF.md).
+## Further reading
+
+- [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) — full ka9q-radio deployment instructions, RX-888 firmware bring-up, and current implementation limitations.

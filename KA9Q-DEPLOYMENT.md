@@ -1,6 +1,6 @@
 # ka9q-radio deployment on SIGedge
 
-This document describes the ka9q-radio integration that exists in the current SIGedge repository. It is an operator-facing companion to the project overview in [README.md](README.md). Development history and unfinished design work belong in [HANDOFF.md](HANDOFF.md), not in this guide.
+This document describes the ka9q-radio integration that exists in the current SIGedge repository. It is an operator-facing companion to the project overview in [README.md](README.md).
 
 ## Service model
 
@@ -53,7 +53,7 @@ The package scripts install their build and runtime dependencies. Avahi is enabl
 
 ## 1. Prepare an RX-888 MkII when applicable
 
-RX-888 preparation is optional. HackRF, RTL-SDR, and other supported front ends do not require it.
+RX-888 preparation is optional, and HackRF, RTL-SDR, and other supported front ends do not require it at all. It is no longer a hard prerequisite for RX-888 either: as of the current `KA9Q_RADIO_REF`, the `ka9q-radio-rx888` binary package (built by `packages/pkg_ka9q-radio package`) bundles its own FX3 boot firmware and a udev rule + `rx888_boot.service` that auto-loads it the moment an unprogrammed RX-888 (`04b4:00f3`) is plugged in — no separate firmware staging step required for the device to enumerate and for `radiod` to open it. `devices/pkg_rx888` still matters for what it does that the package doesn't: tuning `usbfs_memory_mb` for reliable sustained transfers at 64.8 Msps. Run it when you need that tuning, or when you want firmware pinned to a specific, verified build rather than whatever the ka9q-radio package currently bundles.
 
 Under the normal SIGedge parent installer, run the RX-888 device install before installing or building ka9q-radio. For direct use from a repository checkout, provide a source directory and source the package script:
 
@@ -252,6 +252,8 @@ lsusb
 lsusb -t
 ```
 
+A known culprit worth checking specifically: `soapyremote-server.service` should be disabled and stopped after a normal `SIGedge setup`, but if it was ever enabled by hand, or by a checkout predating that fix, it exposes every SoapySDR-visible device to the network and will fight `radiod` for the same hardware. Check `systemctl is-active soapyremote-server.service`; see [README.md](README.md#direct-sdr-use-including-soapysdr) for the intended opt-in/opt-out flow.
+
 ### Discovery works on the wrong interface
 
 Regenerate the configuration with an explicit `KA9Q_IFACE`, then restart the selected receiver. Check routes and multicast membership before changing firewall rules.
@@ -262,4 +264,4 @@ Confirm SuperSpeed operation with `lsusb -t`, inspect kernel messages with `jour
 
 ### Configuration fails after an upstream update
 
-Compare the generated configuration keys with the documentation or source for the exact installed ka9q-radio commit. The current SIGedge build tracks upstream `main`, so syntax or driver behavior can change until the project pins a tested revision.
+`packages/pkg_ka9q-radio` pins ka9q-radio to a fixed commit via `KA9Q_RADIO_REF`, not upstream `main`, so this should not happen from a routine `SIGedge package ka9q-radio` run. It becomes relevant if `KA9Q_RADIO_REF` is deliberately overridden to track `main` or another commit: upstream `main` is active development and can be broken outright (a recent example: a commit that referenced a header file it never added, breaking the build entirely, not just changing config syntax). Compare the generated configuration keys against the documentation or source for the exact installed commit (`git -C source/ka9q-radio rev-parse HEAD`) before assuming a syntax change is the cause.
