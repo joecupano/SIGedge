@@ -366,9 +366,16 @@ case "$ACTION" in
 
         # checkinstall creates the ka9q-radio .deb from the upstream
         # make-install operation without installing it on this host.
+        #
+        # fstrans=no: the ka9q-radio src/Makefile creates multiple
+        # directories in one `install -d dir1 dir2 dir3` call. checkinstall's
+        # fstrans=yes installwatch (LD_PRELOAD syscall interception) tracking
+        # mode loses later directories in that call, so a later chmod fails
+        # with "No such file or directory". fstrans=no uses checkinstall's
+        # traditional pre/post filesystem scan instead, which handles it.
         sudo checkinstall \
             --install=no \
-            --fstrans=yes \
+            --fstrans=no \
             --default \
             --pkgname=ka9q-radio \
             --pkgarch="$PACKAGE_ARCH" \
