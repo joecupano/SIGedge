@@ -22,6 +22,46 @@ ACTION="$1"
 # to select a different tested revision explicitly.
 KA9Q_RADIO_REF="${KA9Q_RADIO_REF:-2ecfe43de8358729d15fc50fd08dd819d39ed2ec}"
 
+# Upstream now ships its own native Debian packaging (debian/control,
+# debhelper-compat 13) that splits ka9q-radio into ~18 binary packages, one
+# per front end / subsystem. SIGedge only wants the front ends and tools it
+# actually configures (see scripts/cfg_ka9q-radio): rx888, hackrf, rtlsdr,
+# plus the core daemon, shared files, and the interactive tools.
+KA9Q_RADIO_PKGS=(
+    ka9q-radio
+    ka9q-radio-common
+    ka9q-radio-rx888
+    ka9q-radio-hackrf
+    ka9q-radio-rtlsdr
+    ka9q-radio-control
+    ka9q-radio-monitor
+    ka9q-radio-tools
+    ka9q-radio-siggen
+)
+
+# Binary packages defined upstream that SIGedge does not build. Some require
+# device libraries not packaged for Ubuntu at all (libfobos-dev,
+# libhydrasdr-dev), so debian/control's Build-Depends can never be fully
+# satisfied via apt on this platform; the rest are simply out of scope for
+# SIGedge's current reference missions. Excluding them from the dh sequence
+# (rather than only skipping their apt build-deps) keeps `dh_install` from
+# failing on files that were never built.
+KA9Q_RADIO_EXCLUDE_PKGS=(
+    ka9q-radio-airspy
+    ka9q-radio-airspyhf
+    ka9q-radio-bladerf
+    ka9q-radio-fobos
+    ka9q-radio-funcube
+    ka9q-radio-hydrasdr
+    ka9q-radio-hfdl
+    ka9q-radio-packet
+    ka9q-radio-recordings
+    ka9q-radio-horus
+    ka9q-radio-ft
+    ka9q-radio-repeater
+    ka9q-radio-full
+)
+
 if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
     echo -e "${SIGEDGE_BANNER_COLOR}"
     echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
@@ -124,17 +164,23 @@ ka9q_verify_install()
         fi
     done
 
-    if [[ -d "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio" ]]; then
-        ls -lh "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio/"
-    fi
-
-    # Dynamic front-end modules depend on the ka9q-radio build and installed
-    # development libraries.  Their absence is informational because some
-    # front ends may be built directly into radiod.
-    for module in rx888 hackrf rtlsdr; do
-        if [[ -f "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio/${module}.so" ]]; then
-            echo "ka9q-radio dynamic front end installed: ${module}.so"
+    # The `build` action installs to /usr/local (Makefile default, for a
+    # manual test build); the `package`+`install` path installs to /usr
+    # (debian/rules' FHS-correct prefix). Check both.
+    local pkglibdir
+    for pkglibdir in "${KA9Q_SYSROOT}/usr/lib/ka9q-radio" "${KA9Q_SYSROOT}/usr/local/lib/ka9q-radio"; do
+        if [[ -d "$pkglibdir" ]]; then
+            ls -lh "$pkglibdir/"
         fi
+
+        # Dynamic front-end modules depend on the ka9q-radio build and
+        # installed development libraries.  Their absence is informational
+        # because some front ends may be built directly into radiod.
+        for module in rx888 hackrf rtlsdr; do
+            if [[ -f "$pkglibdir/${module}.so" ]]; then
+                echo "ka9q-radio dynamic front end installed: ${module}.so"
+            fi
+        done
     done
 
     if systemctl cat radiod@.service >/dev/null 2>&1; then
@@ -156,24 +202,19 @@ case "$ACTION" in
 #        echo -e "${SIGEDGE_BANNER_RESET}"
 #        ;;&
 
-    remove )
-        if dpkg-query -W -f='${Status}' ka9q-radio 2>/dev/null | grep -q "install ok installed"; then
-            sudo dpkg -r ka9q-radio
+    remove|purge )
+        # ka9q-radio is now ~18 separate binary packages upstream (see
+        # KA9Q_RADIO_PKGS above); discover whichever of them are actually
+        # installed rather than assuming a single "ka9q-radio" package name.
+        # apt-get (not raw dpkg) so inter-package Depends/Breaks are handled.
+        mapfile -t ka9q_installed < <(dpkg-query -W -f='${Package}\n' 'ka9q-radio*' 2>/dev/null)
+
+        if (( ${#ka9q_installed[@]} == 0 )); then
+            echo "No ka9q-radio Debian packages are installed"
+        elif [[ "$ACTION" == "remove" ]]; then
+            sudo apt-get remove -y "${ka9q_installed[@]}" || return 1
         else
-            echo "ka9q-radio Debian package is not installed"
-        fi
-
-        if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "$SIGEDGE_INSTALLED" ]]; then
-            sed -i '/ka9q-radio/d' "$SIGEDGE_INSTALLED"
-        fi
-        ;;&
-
-
-    purge )
-        if dpkg-query -W -f='${Status}' ka9q-radio 2>/dev/null | grep -q "install ok installed"; then
-            sudo dpkg -P ka9q-radio
-        else
-            sudo dpkg -P ka9q-radio 2>/dev/null || true
+            sudo apt-get purge -y "${ka9q_installed[@]}" || return 1
         fi
 
         if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "$SIGEDGE_INSTALLED" ]]; then
@@ -191,7 +232,8 @@ case "$ACTION" in
         sudo apt-get install -y \
             git \
             build-essential \
-            checkinstall \
+            debhelper \
+            dpkg-dev \
             rsync \
             avahi-daemon \
             avahi-utils \
@@ -237,24 +279,37 @@ case "$ACTION" in
             return 1
         fi
 
-        cd "$SIGEDGE_DEBS" || return 1
+        KA9Q_DEB_DIR="${SIGEDGE_DEBS}/ka9q-radio"
 
-        if [[ "${SIGEDGE_HWARCH:-}" == "x86_64" ]]; then
-            if [[ ! -f ka9q-radio_current_amd64.deb ]]; then
-                echo "ERROR: ka9q-radio_current_amd64.deb not found in $SIGEDGE_DEBS"
-                return 1
-            fi
-            sudo dpkg -i ka9q-radio_current_amd64.deb || sudo apt-get -f install -y
-        elif [[ "${SIGEDGE_HWARCH:-}" == "aarch64" ]]; then
-            if [[ ! -f ka9q-radio_current_arm64.deb ]]; then
-                echo "ERROR: ka9q-radio_current_arm64.deb not found in $SIGEDGE_DEBS"
-                return 1
-            fi
-            sudo dpkg -i ka9q-radio_current_arm64.deb || sudo apt-get -f install -y
-        else
-            echo "ERROR: Unsupported SIGEDGE_HWARCH: ${SIGEDGE_HWARCH:-undefined}"
+        if [[ ! -d "$KA9Q_DEB_DIR" ]]; then
+            echo "ERROR: $KA9Q_DEB_DIR not found. Run the package action first, or supply it separately."
             return 1
         fi
+
+        shopt -s nullglob
+        ka9q_debs=( "$KA9Q_DEB_DIR"/*.deb )
+        shopt -u nullglob
+
+        if (( ${#ka9q_debs[@]} == 0 )); then
+            echo "ERROR: No .deb files found in $KA9Q_DEB_DIR"
+            return 1
+        fi
+
+        # ka9q-radio's own postinst runs debconf: if no /etc/radio/radiod@*
+        # config exists yet, it defaults to configure_now=true and a rx888
+        # frontend, then itself does `systemctl enable` + `systemctl
+        # restart radiod@rx888.service` -- an unattended `apt-get install -y`
+        # takes that debconf default silently rather than skipping it.
+        # SIGedge's own contract is that installing ka9q-radio never starts
+        # a receiver (see scripts/cfg_ka9q-radio, KA9Q-DEPLOYMENT.md); radio
+        # mission configuration and activation are separate, explicit steps.
+        # Preseed configure_now=false so the postinst's own opt-out applies.
+        echo "ka9q-radio ka9q-radio/configure_now boolean false" | sudo debconf-set-selections
+
+        # apt-get (not raw dpkg -i) resolves the packages' interdependencies
+        # (ka9q-radio-rx888 needs ka9q-radio-common, etc.) and any additional
+        # runtime Depends from the Ubuntu archive in one pass.
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${ka9q_debs[@]}" || return 1
 
         sudo ldconfig
         sudo systemctl daemon-reload
@@ -289,6 +344,14 @@ case "$ACTION" in
 
         cd ka9q-radio || return 1
         git rev-parse HEAD
+        ;;&
+
+
+    build )
+        # Manual test-build path: raw `make`/`make install` to /usr/local,
+        # untracked by dpkg. `dpkg-buildpackage` (below, package action)
+        # does its own clean/build/install via debian/rules, so this
+        # compile step is skipped for `package` to avoid building twice.
         make clean || return 1
         make -j"$(nproc)" ENABLE_AIRSPY=0 \
             ENABLE_AIRSPYHF=0 \
@@ -300,10 +363,6 @@ case "$ACTION" in
             ENABLE_RTLSDR=1 \
             ENABLE_RX888=1 \
             ENABLE_SIG_GEN=1 || return 1
-        ;;&
-
-
-    build )
         sudo make install ENABLE_AIRSPY=0 \
             ENABLE_AIRSPYHF=0 \
             ENABLE_BLADERF=0 \
@@ -347,8 +406,6 @@ case "$ACTION" in
             return 1
         fi
 
-        mkdir -p "$SIGEDGE_DEBS" || return 1
-
         case "${SIGEDGE_HWARCH:-}" in
             x86_64 )
                 PACKAGE_ARCH="amd64"
@@ -362,45 +419,65 @@ case "$ACTION" in
                 ;;
         esac
 
-        PACKAGE_FILE="${SIGEDGE_DEBS}/ka9q-radio_current_${PACKAGE_ARCH}.deb"
+        KA9Q_DEB_DIR="${SIGEDGE_DEBS}/ka9q-radio"
+        mkdir -p "$KA9Q_DEB_DIR" || return 1
 
-        # checkinstall creates the ka9q-radio .deb from the upstream
-        # make-install operation without installing it on this host.
+        # Upstream ships its own debhelper-based debian/ packaging (see
+        # KA9Q_RADIO_PKGS/KA9Q_RADIO_EXCLUDE_PKGS above). dpkg-buildpackage
+        # replaces checkinstall here: checkinstall built its own ad hoc
+        # control data around a raw `make install` and collides with a real
+        # debian/ directory. dpkg-buildpackage builds the packages upstream
+        # actually defined.
         #
-        # fstrans=no: the ka9q-radio src/Makefile creates multiple
-        # directories in one `install -d dir1 dir2 dir3` call. checkinstall's
-        # fstrans=yes installwatch (LD_PRELOAD syscall interception) tracking
-        # mode loses later directories in that call, so a later chmod fails
-        # with "No such file or directory". fstrans=no uses checkinstall's
-        # traditional pre/post filesystem scan instead, which handles it.
-        sudo checkinstall \
-            --install=no \
-            --fstrans=no \
-            --default \
-            --pkgname=ka9q-radio \
-            --pkgarch="$PACKAGE_ARCH" \
-            make install ENABLE_AIRSPY=0 \
-            ENABLE_AIRSPYHF=0 \
-            ENABLE_BLADERF=0 \
-            ENABLE_FOBOS=0 \
-            ENABLE_FUNCUBE=0 \
-            ENABLE_HACKRF=1 \
-            ENABLE_HYDRASDR=0 \
-            ENABLE_RTLSDR=1 \
-            ENABLE_RX888=1 \
-            ENABLE_SIG_GEN=1 || return 1
+        # -d skips dpkg-checkbuilddeps: debian/control's Build-Depends
+        # includes libfobos-dev and libhydrasdr-dev, which are not packaged
+        # for this Ubuntu release at all. Excluding the binary packages that
+        # need them (KA9Q_RADIO_EXCLUDE_PKGS, via DH_OPTIONS -N) means they
+        # are genuinely not required for this build.
+        #
+        # Rules-Requires-Root: no in debian/control means this build needs
+        # no root privileges at all -- only installing build-deps (above)
+        # and later `install`ing the resulting .debs do.
+        dh_options=""
+        for excl in "${KA9Q_RADIO_EXCLUDE_PKGS[@]}"; do
+            dh_options+=" -N ${excl}"
+        done
 
+        DH_OPTIONS="${dh_options}" \
+        DEB_BUILD_OPTIONS="noautodbgsym" \
+        ENABLE_AIRSPY=0 \
+        ENABLE_AIRSPYHF=0 \
+        ENABLE_BLADERF=0 \
+        ENABLE_FOBOS=0 \
+        ENABLE_FUNCUBE=0 \
+        ENABLE_HYDRASDR=0 \
+        ENABLE_SDRPLAY=0 \
+        dpkg-buildpackage -us -uc -b -d || return 1
+
+        # dpkg-buildpackage writes the resulting .debs one directory above
+        # the source tree (i.e. $SIGEDGE_SOURCE), not inside it.
         shopt -s nullglob
-        debs=( ./*.deb )
+        found_pkgs=()
+        missing_pkgs=()
+        for pkg in "${KA9Q_RADIO_PKGS[@]}"; do
+            matches=( "../${pkg}_"*"_${PACKAGE_ARCH}.deb" )
+            if (( ${#matches[@]} == 0 )); then
+                missing_pkgs+=("$pkg")
+            else
+                found_pkgs+=("${matches[@]}")
+            fi
+        done
         shopt -u nullglob
 
-        if (( ${#debs[@]} != 1 )); then
-            echo "ERROR: Expected one ka9q-radio Debian package; found ${#debs[@]}"
+        if (( ${#missing_pkgs[@]} > 0 )); then
+            echo "ERROR: Expected .deb files not produced: ${missing_pkgs[*]}"
             return 1
         fi
 
-        sudo mv "${debs[0]}" "$PACKAGE_FILE" || return 1
-        echo "Created Debian package: $PACKAGE_FILE"
+        rm -f "$KA9Q_DEB_DIR"/*.deb
+        mv "${found_pkgs[@]}" "$KA9Q_DEB_DIR/" || return 1
+        echo "Created Debian packages in: $KA9Q_DEB_DIR"
+        ls -1 "$KA9Q_DEB_DIR"
         ;;&
 
 

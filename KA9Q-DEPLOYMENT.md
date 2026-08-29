@@ -30,8 +30,9 @@ Package installation and radio mission configuration are intentionally separate.
 
 The repository is not yet a fully reproducible production deployment:
 
-- `packages/pkg_ka9q-radio install` expects `debs/ka9q-radio_current_amd64.deb` or `debs/ka9q-radio_current_arm64.deb`. Neither artifact is currently tracked, so a clean checkout must use the source `build` action or supply a package.
-- The ka9q-radio source build follows upstream `main`; it is not pinned to a tested commit.
+- `packages/pkg_ka9q-radio install` expects a populated `debs/ka9q-radio/` directory (one `.deb` per binary package SIGedge builds; see step 2). Nothing is tracked there by default, so a clean checkout must run the `package` action first, use the source `build` action, or supply the directory separately.
+- ka9q-radio's own upstream `debian/` packaging defines build dependencies (`libfobos-dev`, `libhydrasdr-dev`) that are not packaged for Ubuntu 24.04 at all. `packages/pkg_ka9q-radio package` works around this by excluding the binary packages that need them (`ka9q-radio-fobos`, `ka9q-radio-hydrasdr`) from the build rather than trying to satisfy them.
+- `packages/pkg_ka9q-radio` pins ka9q-radio to a fixed commit via `KA9Q_RADIO_REF` rather than following upstream `main`, so it can lag behind current upstream until that pin is updated deliberately.
 - RX-888 firmware also defaults to its upstream `main` branch unless `RX888_FW_REF` is set.
 - The generated radio configurations are reference missions. Validate their option names and hardware behavior against the installed ka9q-radio revision before production use.
 - `scripts/verify_ka9q-radio.sh` still references older service instance names and invokes interactive or unbounded tools. Use the bounded checks in this document instead.
@@ -93,29 +94,28 @@ If the USB buffering setting could not be applied live, reboot before high-rate 
 
 ## 2. Build or install ka9q-radio
 
-### Source build available in a clean checkout
+Upstream ka9q-radio ships its own native Debian packaging (`debian/control`, debhelper-compat 13) that splits the project into about 18 binary packages, one per front end or subsystem. SIGedge builds and installs only the subset its reference missions use: `ka9q-radio`, `ka9q-radio-common`, `ka9q-radio-rx888`, `ka9q-radio-hackrf`, `ka9q-radio-rtlsdr`, `ka9q-radio-control`, `ka9q-radio-monitor`, `ka9q-radio-tools`, `ka9q-radio-siggen` (see `KA9Q_RADIO_PKGS` in `packages/pkg_ka9q-radio`).
 
-Until release `.deb` files are supplied, the source build is the usable clean-checkout path:
+### Packaged path (recommended)
+
+Build reproducible, dpkg-tracked `.deb` files via `dpkg-buildpackage` against upstream's own `debian/` directory, then install them:
+
+```bash
+cd /path/to/SIGedge
+./SIGedge package ka9q-radio   # -> debs/ka9q-radio/*.deb
+./SIGedge install ka9q-radio   # apt-get installs debs/ka9q-radio/*.deb
+```
+
+Because dpkg tracks the result, `./SIGedge remove ka9q-radio` and `./SIGedge purge ka9q-radio` work cleanly afterward.
+
+### Manual test-build path
+
+For a quick one-off test build outside package management (raw `make install` to `/usr/local`, not tracked by dpkg — `remove`/`purge` are no-ops against it; clean up with `make uninstall`/`make purge` in the source tree instead):
 
 ```bash
 mkdir -p /tmp/sigedge-build
 SIGEDGE_SOURCE=/tmp/sigedge-build source packages/pkg_ka9q-radio build
 ```
-
-This installs dependencies, clones and builds ka9q-radio, runs `make install`, reloads systemd and udev, and verifies the `radiod`, `control`, and `monitor` commands.
-
-For a repeatable deployment, set or record a tested upstream revision before production. The current package script does not yet expose a ka9q commit override.
-
-### Prebuilt package path
-
-When an architecture-appropriate package has been placed in `debs/`, the SIGedge `install` action can install it. The required names are:
-
-```text
-debs/ka9q-radio_current_amd64.deb
-debs/ka9q-radio_current_arm64.deb
-```
-
-The parent SIGedge command supplies the environment used by the package script. Do not use the `install` action on a clean checkout until the appropriate file exists.
 
 ### Verify the installation
 
@@ -127,10 +127,10 @@ systemctl is-active avahi-daemon
 avahi-browse -art
 ```
 
-If dynamic front-end modules were produced, they are normally under:
+If dynamic front-end modules were produced, they are under `/usr/lib/ka9q-radio/` for a packaged install, or `/usr/local/lib/ka9q-radio/` for a manual `build`-action install:
 
 ```bash
-ls -la /usr/local/lib/ka9q-radio/
+ls -la /usr/lib/ka9q-radio/ /usr/local/lib/ka9q-radio/ 2>/dev/null
 ```
 
 Some front ends may be built directly into `radiod`, so the absence of a same-named `.so` file is not by itself an installation failure.
