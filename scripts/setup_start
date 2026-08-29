@@ -100,13 +100,13 @@ select_devices() {
 }
 
 select_services() {
-    FUN=$(whiptail --title "Server Setup" --clear --checklist --separate-output \
-        "Choose which server to run as a service" 20 120 12 \
+    FUN=$(whiptail --title "Services Installation" --clear --checklist --separate-output \
+        "Choose which services to install" 20 120 12 \
+        "ka9q-radio" "KA9Q-Radio " OFF \
         "openwebrx" "OpenWebRX " OFF \
         "rtltcpsrv" "RTL-TCP Server " OFF \
         "sdrangelsrv" "SDRangel Server " OFF \
         "soapysdrsrv" "SoapySDR Server " OFF \
-        "radiosonde" "RadioSonde AutoRX " OFF \
 		3>&1 1>&2 2>&3)
     RET=$?
     if [ $RET -eq 1 ]; then
@@ -116,7 +116,7 @@ select_services() {
     IFS=' '     # space is set as delimiter
     read -ra ADDR <<< "$FUN"   # str is read into an array as tokens separated by IFS
     for i in "${ADDR[@]}"; do   # access each element of array
-        echo "$i" >> "$SIGEDGE_INSTALLED_DEVICES"
+        echo "$i" >> "$SIGEDGE_INSTALLED_SERVICES"
     done
 }
 
@@ -140,6 +140,7 @@ system_current() {
 mkdir -p "$SIGEDGE_ETC"
 touch "$SIGEDGE_INSTALLED"
 touch "$SIGEDGE_INSTALLED_DEVICES"
+touch "$SIGEDGE_INSTALLED_SERVICES"
 mkdir -p "$SIGEDGE_SOURCE"
 cd "$SIGEDGE_SOURCE" || return 1
 
