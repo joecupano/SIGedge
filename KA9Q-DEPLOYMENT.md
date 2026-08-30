@@ -22,7 +22,6 @@ An SDR must have only one active owner. Do not run `radiod` and a direct-access 
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
 | Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
 | Reference configurations | `config/radiod@*.EXAMPLE` | Shows the current generated configuration shape |
-| Diagnostic helper | `scripts/verify_ka9q-radio.sh` | Development helper; not suitable for unattended validation in its current form |
 
 Package installation and radio mission configuration are intentionally separate. Installing ka9q-radio does not create or start a radio-specific `radiod` instance.
 
@@ -35,7 +34,6 @@ The repository is not yet a fully reproducible production deployment:
 - `packages/pkg_ka9q-radio` pins ka9q-radio to a fixed commit via `KA9Q_RADIO_REF` rather than following upstream `main`, so it can lag behind current upstream until that pin is updated deliberately.
 - RX-888 firmware also defaults to its upstream `main` branch unless `RX888_FW_REF` is set.
 - The generated radio configurations are reference missions. Validate their option names and hardware behavior against the installed ka9q-radio revision before production use.
-- `scripts/verify_ka9q-radio.sh` still references older service instance names and invokes interactive or unbounded tools. Use the bounded checks in this document instead.
 
 Regardless of installation path, SIGedge does not start a radio receiver by default. Hardware assignment, multicast interface selection, and receiver activation remain explicit operator actions.
 
