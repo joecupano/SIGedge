@@ -28,36 +28,42 @@ source "$SIGEDGE_PACKAGES/pkg_rtl_433" install || return 1
 # hardware (see README.md). Both get installed here; pkg_openwebrx leaves
 # its systemd unit disabled, same as ka9q-radio's radiod missions below --
 # which one to actually run is an explicit operator decision made later.
-source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
+
+if grep -qx 'openwebrx' "$SIGEDGE_INSTALLED_SERVICES"; then
+    source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
+fi
 
 # Prefer release packages when present. ka9q-radio now packages as multiple
 # .deb files (see KA9Q_RADIO_PKGS in pkg_ka9q-radio) built into
 # debs/ka9q-radio/, not a single ka9q-radio_current_<arch>.deb; a clean
 # checkout has none yet, so build and install from source in that case.
-KA9Q_DEB_DIR="$SIGEDGE_DEBS/ka9q-radio"
 
-if [[ -d "$KA9Q_DEB_DIR" ]] && compgen -G "$KA9Q_DEB_DIR/*.deb" >/dev/null; then
-    source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" install || return 1
-else
-    echo "No ka9q-radio release packages found in $KA9Q_DEB_DIR; building from source"
-    source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" build || return 1
-fi
+if grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
+    KA9Q_DEB_DIR="$SIGEDGE_DEBS/ka9q-radio"
+
+    if [[ -d "$KA9Q_DEB_DIR" ]] && compgen -G "$KA9Q_DEB_DIR/*.deb" >/dev/null; then
+        source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" install || return 1
+    else
+        echo "No ka9q-radio release packages found in $KA9Q_DEB_DIR; building from source"
+        source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" build || return 1
+    fi
 
 # Generate only the missions selected during device setup. Configuration is
 # deliberately separate from activation: leave every unit disabled and stopped.
-if grep -qx 'rx888' "$SIGEDGE_INSTALLED_DEVICES"; then
-    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
-        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rx888 || return 1
-fi
+    if grep -qx 'rx888' "$SIGEDGE_INSTALLED_DEVICES"; then
+        KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+            source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rx888 || return 1
+    fi
 
-if grep -qx 'rtlsdr' "$SIGEDGE_INSTALLED_DEVICES"; then
-    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
-        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rtlsdr || return 1
-fi
+    if grep -qx 'rtlsdr' "$SIGEDGE_INSTALLED_DEVICES"; then
+        KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+            source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" rtlsdr || return 1
+    fi
 
-if grep -qx 'hackrf' "$SIGEDGE_INSTALLED_DEVICES"; then
-    KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
-        source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" hackrf || return 1
+    if grep -qx 'hackrf' "$SIGEDGE_INSTALLED_DEVICES"; then
+        KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
+            source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" hackrf || return 1
+    fi
 fi
 
 echo -e "${SIGEDGE_BANNER_COLOR}"
