@@ -3,3 +3,6 @@ etc/INSTALLED_PKGS
 etc/INSTALLED_SERVICES
 etc/fftw-wisdom
 source
+__pycache__/
+*.pyc
+.venv/

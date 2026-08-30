@@ -22,6 +22,33 @@ but further configuration is necessary for each service before enabling them.
 Directly sourced by **setup_services** during **SIGedge setup**.
 Reachable via **SIGedge config ka9q-radio <mission>**. 
 
+- **cfg_ka9q-radio_tui**
+Standalone Python/[Textual](https://textual.textualize.io/) editor for
+`radiod@<instance>.conf` files, styled after ka9q-radio's own `control`
+program (bordered panels, live status, single-letter hotkeys). Full
+add/change/delete/update over the complete config: a mission list (`n`
+new, `d` delete) on the left with live enabled/active state, and on the
+right a tree of the selected mission's actual sections and keys (`a` add
+a section/key, `c` change a value, `x` delete, `w` write to disk with a
+backup, `s`/`t` toggle enable/start). Parses each file with `configparser`
+(order- and case-preserving, values kept exactly as written) and writes
+directly via `sudo tee` with a timestamped backup first -- it does not go
+through `cfg_ka9q-radio`, which can only regenerate its three fixed
+single-channel templates and has no way to express an arbitrary added key
+or a mission of any other name; see the script's own module docstring and
+[KA9Q-DEPLOYMENT.md](../KA9Q-DEPLOYMENT.md#interactive-alternative) for
+why. `cfg_ka9q-radio` itself is unchanged and still what `setup_services`
+uses non-interactively for the three reference missions. Requires the
+`textual` package, not installed by any SIGedge setup script -- install it
+yourself the first time (the Debian/Ubuntu `python3-textual` apt package
+is version 0.1.x and far too old for this script): `pip install --user
+--break-system-packages textual`, or `sudo apt-get install -y python3-venv
+&& python3 -m venv .venv && .venv/bin/pip install textual` if you'd rather
+keep it isolated (plain `python3 -m venv` fails on Debian/Ubuntu until
+`python3-venv` is installed -- ensurepip isn't in the base image). Run
+directly: `scripts/cfg_ka9q-radio_tui`; not part of the `SIGedge`
+parent-script dispatch.
+
 - **service_toggle**
 Safely switches between ka9q-radio and OpenWebRX, which are alternative
 deployments for the same SDR hardware and must never both be active at

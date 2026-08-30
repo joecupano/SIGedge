@@ -1,0 +1,785 @@
+#!/usr/bin/env python3
+"""SIGedge -- cfg_ka9q-radio_tui
+
+20260830-0000
+
+Standalone Textual TUI for full add/change/delete/update of ka9q-radio
+radiod mission configurations (/etc/radio/radiod@<instance>.conf) and their
+systemd state, styled after ka9q-radio's own `control` program: bordered
+panels, a live mission list, and a cursor-driven, single-letter-hotkey
+editor (see source/ka9q-radio/docs/utils/control.md for that program's own
+key table).
+
+Design note -- this app writes configuration files directly (via `sudo
+tee`, with a timestamped backup first, same convention as
+scripts/cfg_ka9q-radio's own backup_config) rather than shelling out to
+cfg_ka9q-radio. cfg_ka9q-radio can only regenerate its three fixed,
+single-channel reference templates through a handful of environment
+variables; it has no way to express "add this new key", "add a whole new
+section", or "create a mission that isn't rx888/hackrf/rtlsdr". Genuine
+add/change/delete/update over the complete config surface needs a real
+INI-level editor, so this tool is now that editor. cfg_ka9q-radio is
+untouched and remains the non-interactive generator setup_services uses
+for the three reference missions.
+
+Every mission's config is parsed with Python's configparser (preserving
+section/key order and exact key case) and rendered as a Tree: mission ->
+sections -> key/value leaves. Missions themselves (not just their content)
+support add/delete from the left-hand list, mirroring control's directness
+-- one key per action, applied immediately with a confirmation, not staged
+behind a multi-field form.
+
+Usage:
+    scripts/cfg_ka9q-radio_tui
+
+Requires the "textual" Python package -- see KA9Q-DEPLOYMENT.md's
+"Interactive alternative" section for how to install it on Debian/Ubuntu.
+"""
+
+from __future__ import annotations
+
+import configparser
+import os
+import shutil
+import subprocess
+import sys
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+try:
+    from rich.markup import escape as mkup_escape
+    from rich.text import Text
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical
+    from textual.screen import ModalScreen
+    from textual.widgets import (
+        Button,
+        DataTable,
+        Footer,
+        Header,
+        Input,
+        Label,
+        RichLog,
+        Static,
+        Tree,
+    )
+    from textual.widgets.tree import TreeNode
+except ImportError:
+    print(
+        "ERROR: the 'textual' Python package is required.\n"
+        "Install it with one of:\n"
+        "  pip install --user --break-system-packages textual\n"
+        "  sudo apt-get install -y python3-venv && python3 -m venv .venv \\\n"
+        "      && .venv/bin/pip install textual && .venv/bin/python3 " + __file__ + "\n"
+        "  pipx install textual   (needs 'sudo apt-get install -y pipx' first)\n"
+        "(The Debian/Ubuntu python3-textual package is version 0.1.x and is\n"
+        "too old for this script -- do not use it. Debian/Ubuntu also strip\n"
+        "ensurepip out of the base python3, so 'python3 -m venv' fails until\n"
+        "python3-venv is installed -- that's what the second option does.)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+KA9Q_CONFIG_DIR = Path(os.environ.get("KA9Q_CONFIG_DIR", "/etc/radio"))
+
+
+### ---------------------------------------------------------------------
+### Config model -- a thin, order-preserving INI wrapper around
+### configparser. Values are kept exactly as written (including any
+### literal quote characters ka9q-radio itself puts around frequencies);
+### this app never tries to interpret or reformat them.
+### ---------------------------------------------------------------------
+
+SectionDict = "OrderedDict[str, OrderedDict[str, str]]"
+
+
+@dataclass
+class RadiodConfig:
+    header: str = ""
+    sections: SectionDict = field(default_factory=OrderedDict)
+
+    @classmethod
+    def load(cls, path: Path) -> RadiodConfig:
+        text = path.read_text()
+        header_lines: list[str] = []
+        body_lines: list[str] = []
+        in_header = True
+        for line in text.splitlines():
+            if in_header and (line.strip() == "" or line.lstrip().startswith("#")):
+                header_lines.append(line)
+                continue
+            in_header = False
+            body_lines.append(line)
+
+        parser = configparser.ConfigParser(strict=False)
+        parser.optionxform = str  # preserve key case exactly; don't lowercase
+        parser.read_string("\n".join(body_lines))
+
+        sections: SectionDict = OrderedDict()
+        for name in parser.sections():
+            sections[name] = OrderedDict(parser.items(name))
+        return cls(header="\n".join(header_lines).strip("\n"), sections=sections)
+
+    @classmethod
+    def blank(cls, instance: str) -> RadiodConfig:
+        header = (
+            f"# SIGedge ka9q-radio configuration\n"
+            f"# Mission: {instance}\n"
+            f"# Created by cfg_ka9q-radio_tui -- add sections/keys with 'a'."
+        )
+        sections: SectionDict = OrderedDict()
+        sections["global"] = OrderedDict({"hardware": ""})
+        return cls(header=header, sections=sections)
+
+    def to_text(self) -> str:
+        parts: list[str] = []
+        if self.header:
+            parts.append(self.header)
+            parts.append("")
+        for section, kv in self.sections.items():
+            parts.append(f"[{section}]")
+            for key, value in kv.items():
+                parts.append(f"{key} = {value}")
+            parts.append("")
+        return "\n".join(parts).rstrip("\n") + "\n"
+
+
+def conf_path(instance: str) -> Path:
+    return KA9Q_CONFIG_DIR / f"radiod@{instance}.conf"
+
+
+def discover_missions() -> list[str]:
+    if not KA9Q_CONFIG_DIR.is_dir():
+        return []
+    instances = []
+    for path in sorted(KA9Q_CONFIG_DIR.glob("radiod@*.conf")):
+        name = path.name[len("radiod@"):-len(".conf")]
+        instances.append(name)
+    return instances
+
+
+def unit_name(instance: str) -> str:
+    return f"radiod@{instance}.service"
+
+
+VALID_NAME_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
+
+
+def valid_name(name: str) -> bool:
+    return bool(name) and set(name) <= VALID_NAME_CHARS
+
+
+### ---------------------------------------------------------------------
+### Privileged filesystem/systemd operations. All go through `sudo -n` --
+### preflight() already made sure a cached credential exists, and failing
+### fast with a clear log message beats an in-app hang waiting for a
+### password prompt the alternate screen can't render.
+### ---------------------------------------------------------------------
+
+class SudoError(RuntimeError):
+    pass
+
+
+def run_sudo(args: list[str], input_text: str | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["sudo", "-n", *args], input=input_text,
+        capture_output=True, text=True, check=False,
+    )
+
+
+def require_sudo_ok(result: subprocess.CompletedProcess, action: str) -> None:
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"exit {result.returncode}"
+        raise SudoError(f"{action} failed: {detail}")
+
+
+def sudo_mkdir(path: Path) -> None:
+    require_sudo_ok(run_sudo(["mkdir", "-p", str(path)]), f"mkdir -p {path}")
+
+
+def sudo_backup(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = path.with_name(f"{path.name}.{stamp}.bak")
+    require_sudo_ok(run_sudo(["cp", "-a", str(path), str(backup)]), f"backup {path}")
+    return str(backup)
+
+
+def sudo_write(path: Path, content: str) -> None:
+    sudo_mkdir(path.parent)
+    require_sudo_ok(run_sudo(["tee", str(path)], input_text=content), f"write {path}")
+    run_sudo(["chmod", "0664", str(path)])
+
+
+def sudo_soft_delete(path: Path) -> str:
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = path.with_name(f"{path.name}.{stamp}.deleted")
+    require_sudo_ok(run_sudo(["mv", str(path), str(dest)]), f"delete {path}")
+    return str(dest)
+
+
+def daemon_reload() -> None:
+    run_sudo(["systemctl", "daemon-reload"])
+
+
+def systemctl_query(unit: str, verb: str) -> str:
+    try:
+        result = subprocess.run(
+            ["systemctl", verb, unit],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    return result.stdout.strip() or result.stderr.strip() or "unknown"
+
+
+def systemctl_toggle_enable(unit: str) -> tuple[bool, str]:
+    currently_enabled = systemctl_query(unit, "is-enabled") == "enabled"
+    verb = "disable" if currently_enabled else "enable"
+    result = run_sudo(["systemctl", verb, unit])
+    if result.returncode != 0:
+        return False, result.stderr.strip() or f"systemctl {verb} failed"
+    return True, f"{verb}d {unit}"
+
+
+def systemctl_toggle_active(unit: str) -> tuple[bool, str]:
+    currently_active = systemctl_query(unit, "is-active") == "active"
+    verb = "stop" if currently_active else "start"
+    result = run_sudo(["systemctl", verb, unit])
+    if result.returncode != 0:
+        return False, result.stderr.strip() or f"systemctl {verb} failed"
+    return True, f"{verb}ped {unit}" if verb == "stop" else f"started {unit}"
+
+
+def radiod_template_installed() -> bool:
+    try:
+        result = subprocess.run(
+            ["systemctl", "cat", "radiod@.service"],
+            capture_output=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+### ---------------------------------------------------------------------
+### Preflight -- runs in the normal terminal, before Textual takes over
+### the screen, since a sudo password prompt needs ordinary tty control.
+### ---------------------------------------------------------------------
+
+def preflight() -> None:
+    if not shutil.which("radiod"):
+        sys.exit("ERROR: radiod is not installed or is not in PATH")
+
+    if not radiod_template_installed():
+        sys.exit(
+            "ERROR: radiod@.service systemd template not found -- is ka9q-radio installed?"
+        )
+
+    cached = subprocess.run(["sudo", "-n", "true"], capture_output=True, check=False)
+    if cached.returncode != 0:
+        # This intentionally allows sudo to prompt interactively when a
+        # cached credential is not present.
+        prompted = subprocess.run(["sudo", "true"], check=False)
+        if prompted.returncode != 0:
+            sys.exit("ERROR: sudo privileges are required")
+
+
+### ---------------------------------------------------------------------
+### Modal dialogs
+### ---------------------------------------------------------------------
+
+DIALOG_CSS = """
+ConfirmScreen, FormScreen {
+    align: center middle;
+}
+#confirm-dialog, #form-dialog {
+    width: 70;
+    height: auto;
+    border: thick $accent;
+    background: $panel;
+    padding: 1 2;
+}
+#confirm-text {
+    margin-bottom: 1;
+}
+#form-dialog Input {
+    margin-bottom: 1;
+}
+#form-hint {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+"""
+
+
+class ConfirmScreen(ModalScreen[bool]):
+    CSS = DIALOG_CSS
+
+    def __init__(self, summary: str, danger: bool = False) -> None:
+        super().__init__()
+        self.summary = summary
+        self.danger = danger
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-dialog"):
+            yield Static(self.summary, id="confirm-text", markup=False)
+            with Horizontal():
+                yield Button(
+                    "Delete" if self.danger else "Apply", id="yes",
+                    variant="error" if self.danger else "primary",
+                )
+                yield Button("Cancel", id="no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
+
+
+class FormScreen(ModalScreen[dict[str, str] | None]):
+    """Generic one-or-more-field prompt. Fields: list of (id, label, default)."""
+
+    CSS = DIALOG_CSS
+
+    def __init__(self, title: str, fields: list[tuple[str, str, str]], hint: str = "") -> None:
+        super().__init__()
+        self.title_text = title
+        self.fields = fields
+        self.hint = hint
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="form-dialog"):
+            yield Static(self.title_text, id="form-title", markup=False)
+            if self.hint:
+                yield Static(self.hint, id="form-hint", markup=False)
+            for field_id, label, default in self.fields:
+                yield Label(label)
+                yield Input(value=default, id=f"field-{field_id}")
+            with Horizontal():
+                yield Button("OK", id="ok", variant="primary")
+                yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        inputs = list(self.query(Input))
+        if inputs:
+            inputs[0].focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._submit()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            self._submit()
+        else:
+            self.dismiss(None)
+
+    def _submit(self) -> None:
+        result = {
+            field_id: self.query_one(f"#field-{field_id}", Input).value
+            for field_id, _, _ in self.fields
+        }
+        self.dismiss(result)
+
+
+### ---------------------------------------------------------------------
+### Main application
+### ---------------------------------------------------------------------
+
+# Tree node payloads are plain dicts tagged by "type":
+#   {"type": "mission"}
+#   {"type": "section", "section": str}
+#   {"type": "key", "section": str, "key": str}
+
+class Ka9qRadioTUI(App[None]):
+    TITLE = "SIGedge ka9q-radio Configuration"
+    SUB_TITLE = "radiod config editor"
+
+    CSS = """
+    #body {
+        height: 1fr;
+    }
+    #missions {
+        width: 40%;
+        border: round $primary;
+    }
+    #editor {
+        width: 1fr;
+        border: round $primary;
+    }
+    #tree {
+        height: 1fr;
+    }
+    #log {
+        height: 12;
+        border: round $primary-darken-1;
+    }
+    """
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("n", "new_mission", "New mission"),
+        Binding("d", "delete_mission", "Delete mission"),
+        Binding("a", "add", "Add"),
+        Binding("c", "change", "Change"),
+        Binding("x", "delete_node", "Delete key/section"),
+        Binding("w", "save", "Write"),
+        Binding("s", "toggle_enable", "Enable/disable"),
+        Binding("t", "toggle_active", "Start/stop"),
+        Binding("r", "refresh_status", "Refresh"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.current_instance: str | None = None
+        self.current_config: RadiodConfig | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Horizontal(id="body"):
+            yield DataTable(id="missions", cursor_type="row")
+            with Vertical(id="editor"):
+                yield Tree("(no missions)", id="tree")
+        yield RichLog(id="log", markup=True, wrap=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one("#missions", DataTable)
+        table.add_column("Instance", key="instance")
+        table.add_column("Enabled", key="enabled")
+        table.add_column("Active", key="active")
+        table.border_title = "Missions  (n=new, d=delete)"
+        self.query_one("#editor", Vertical).border_title = "Config  (Tab to switch panes)"
+        self.reload_mission_list()
+        table.focus()
+
+    ### -- logging ---------------------------------------------------
+    #
+    # RichLog(markup=True) parses '[...]' as console markup. That's wanted
+    # for our own "[green]...[/]"/"[red]...[/]" wrappers below, but section
+    # names, keys, and values are arbitrary operator input that may itself
+    # contain '[' -- log_info/log_error escape it so it always prints
+    # literally; only the fixed color tags we write ourselves stay live.
+
+    def log_write(self, markup_text: str) -> None:
+        self.query_one("#log", RichLog).write(markup_text)
+
+    def log_info(self, text: str) -> None:
+        self.log_write(mkup_escape(text))
+
+    def log_error(self, text: str) -> None:
+        self.log_write(f"[red]{mkup_escape(text)}[/red]")
+
+    def log_status(self, ok: bool, text: str) -> None:
+        color = "green" if ok else "red"
+        self.log_write(f"[{color}]{mkup_escape(text)}[/{color}]")
+
+    ### -- mission list -------------------------------------------------
+
+    def reload_mission_list(self, select: str | None = None) -> None:
+        table = self.query_one("#missions", DataTable)
+        table.clear()
+        instances = discover_missions()
+        for inst in instances:
+            unit = unit_name(inst)
+            table.add_row(
+                inst,
+                systemctl_query(unit, "is-enabled"),
+                systemctl_query(unit, "is-active"),
+                key=inst,
+            )
+        if instances:
+            target = select if select in instances else instances[0]
+            table.move_cursor(row=instances.index(target))
+            self.load_mission(target)
+        else:
+            self.current_instance = None
+            self.current_config = None
+            self.rebuild_tree()
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.row_key.value is not None:
+            self.load_mission(str(event.row_key.value))
+
+    def action_refresh_status(self) -> None:
+        self.reload_mission_list(select=self.current_instance)
+        self.log_info("Status refreshed.")
+
+    ### -- new / delete mission -----------------------------------------
+
+    def action_new_mission(self) -> None:
+        def check(result: dict[str, str] | None) -> None:
+            if not result:
+                return
+            name = result["name"].strip()
+            if not valid_name(name):
+                self.log_error(f"Invalid mission name '{name}'")
+                return
+            if name in discover_missions():
+                self.log_error(f"Mission '{name}' already exists")
+                return
+            try:
+                sudo_write(conf_path(name), RadiodConfig.blank(name).to_text())
+                daemon_reload()
+            except SudoError as exc:
+                self.log_error(str(exc))
+                return
+            self.log_status(True, f"Created {conf_path(name)}")
+            self.reload_mission_list(select=name)
+
+        self.push_screen(
+            FormScreen(
+                "New mission",
+                [("name", "Instance name (e.g. rx888-10m, hackrf-aprs)", "")],
+                hint="Creates a minimal [global] skeleton; add sections/keys with 'a'.",
+            ),
+            check,
+        )
+
+    def action_delete_mission(self) -> None:
+        if self.current_instance is None:
+            self.log_error("No mission selected")
+            return
+        instance = self.current_instance
+        unit = unit_name(instance)
+        enabled = systemctl_query(unit, "is-enabled") == "enabled"
+        active = systemctl_query(unit, "is-active") == "active"
+        warn = ""
+        if enabled or active:
+            warn = "\nIt will be stopped and disabled first."
+
+        def check(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                if active:
+                    require_sudo_ok(run_sudo(["systemctl", "stop", unit]), f"stop {unit}")
+                if enabled:
+                    require_sudo_ok(run_sudo(["systemctl", "disable", unit]), f"disable {unit}")
+                backup = sudo_soft_delete(conf_path(instance))
+            except SudoError as exc:
+                self.log_error(str(exc))
+                return
+            self.log_status(True, f"Deleted {instance} (moved to {backup})")
+            self.reload_mission_list()
+
+        self.push_screen(
+            ConfirmScreen(
+                f"Delete mission '{instance}'?\nConfig is moved aside, not erased.{warn}",
+                danger=True,
+            ),
+            check,
+        )
+
+    ### -- form population -----------------------------------------------
+
+    def load_mission(self, instance: str) -> None:
+        self.current_instance = instance
+        path = conf_path(instance)
+        try:
+            self.current_config = RadiodConfig.load(path)
+        except (OSError, configparser.Error) as exc:
+            self.log_error(f"Failed to parse {path}: {exc}")
+            self.current_config = RadiodConfig.blank(instance)
+        self.rebuild_tree()
+
+    def rebuild_tree(self) -> None:
+        # Labels are wrapped in rich.text.Text (not plain str) so literal
+        # '[section]' brackets render as-is -- a bare str label is run
+        # through Text.from_markup(), which treats "[global]" as an
+        # (invalid, unclosed) console markup tag and silently drops it.
+        tree = self.query_one("#tree", Tree)
+        if self.current_instance is None or self.current_config is None:
+            tree.reset(Text("(no missions -- press 'n' to create one)"))
+            return
+
+        unit = unit_name(self.current_instance)
+        status = f"enabled={systemctl_query(unit,'is-enabled')} active={systemctl_query(unit,'is-active')}"
+        tree.reset(Text(f"{self.current_instance}  ({status})"), data={"type": "mission"})
+        for section, kv in self.current_config.sections.items():
+            snode = tree.root.add(
+                Text(f"[{section}]"), data={"type": "section", "section": section}, expand=True,
+            )
+            for key, value in kv.items():
+                snode.add_leaf(
+                    Text(f"{key} = {value}"), data={"type": "key", "section": section, "key": key},
+                )
+        tree.root.expand()
+
+    ### -- tree-node CRUD -------------------------------------------------
+
+    def _cursor_node(self) -> TreeNode | None:
+        return self.query_one("#tree", Tree).cursor_node
+
+    def action_add(self) -> None:
+        if self.current_config is None:
+            self.log_error("No mission selected")
+            return
+        node = self._cursor_node()
+        node_type = (node.data or {}).get("type") if node else "mission"
+
+        if node_type in ("mission", None):
+            self._prompt_add_section()
+        elif node_type == "section":
+            self._prompt_add_key(node.data["section"])
+        elif node_type == "key":
+            self._prompt_add_key(node.data["section"])
+
+    def _prompt_add_section(self) -> None:
+        def check(result: dict[str, str] | None) -> None:
+            if not result:
+                return
+            name = result["name"].strip()
+            if not name:
+                self.log_error("Section name cannot be empty")
+                return
+            if name in self.current_config.sections:
+                self.log_error(f"Section [{name}] already exists")
+                return
+            self.current_config.sections[name] = OrderedDict()
+            self.rebuild_tree()
+            self.log_info(f"Added section [{name}] (unsaved -- press 'w' to write)")
+
+        self.push_screen(FormScreen("Add section", [("name", "Section name", "")]), check)
+
+    def _prompt_add_key(self, section: str) -> None:
+        hint = ""
+        if section == "global":
+            hint = "e.g. iface, ttl, mode, status, data"
+
+        def check(result: dict[str, str] | None) -> None:
+            if not result:
+                return
+            key = result["key"].strip()
+            value = result["value"]
+            if not key:
+                self.log_error("Key name cannot be empty")
+                return
+            self.current_config.sections[section][key] = value
+            self.rebuild_tree()
+            self.log_info(f"Set {section}.{key} = {value} (unsaved -- press 'w' to write)")
+
+        self.push_screen(
+            FormScreen(
+                f"Add key to [{section}]",
+                [("key", "Key", ""), ("value", "Value", "")],
+                hint=hint,
+            ),
+            check,
+        )
+
+    def action_change(self) -> None:
+        if self.current_config is None:
+            return
+        node = self._cursor_node()
+        if node is None or (node.data or {}).get("type") != "key":
+            self.log_info("Select a key to change (Add with 'a', or move onto a key line first)")
+            return
+        section = node.data["section"]
+        key = node.data["key"]
+        current_value = self.current_config.sections[section][key]
+
+        def check(result: dict[str, str] | None) -> None:
+            if not result:
+                return
+            self.current_config.sections[section][key] = result["value"]
+            self.rebuild_tree()
+            self.log_info(f"Set {section}.{key} = {result['value']} (unsaved -- press 'w' to write)")
+
+        self.push_screen(
+            FormScreen(f"Change {section}.{key}", [("value", "Value", current_value)]),
+            check,
+        )
+
+    def action_delete_node(self) -> None:
+        if self.current_config is None:
+            return
+        node = self._cursor_node()
+        if node is None or node.data is None:
+            return
+        data = node.data
+
+        if data["type"] == "key":
+            def check(confirmed: bool | None) -> None:
+                if confirmed:
+                    del self.current_config.sections[data["section"]][data["key"]]
+                    self.rebuild_tree()
+                    self.log_info(f"Deleted {data['section']}.{data['key']} (unsaved -- press 'w' to write)")
+
+            self.push_screen(
+                ConfirmScreen(f"Delete key '{data['key']}' from [{data['section']}]?", danger=True), check,
+            )
+        elif data["type"] == "section":
+            count = len(self.current_config.sections[data["section"]])
+
+            def check(confirmed: bool | None) -> None:
+                if confirmed:
+                    del self.current_config.sections[data["section"]]
+                    self.rebuild_tree()
+                    self.log_info(f"Deleted section [{data['section']}] (unsaved -- press 'w' to write)")
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"Delete section [{data['section']}] and its {count} key(s)?", danger=True,
+                ),
+                check,
+            )
+        else:
+            self.log_info("Use 'd' on the mission list to delete a whole mission.")
+
+    ### -- save / systemd actions -----------------------------------------
+
+    def action_save(self) -> None:
+        if self.current_instance is None or self.current_config is None:
+            self.log_error("No mission selected")
+            return
+        path = conf_path(self.current_instance)
+        preview = self.current_config.to_text()
+
+        def check(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                backup = sudo_backup(path)
+                sudo_write(path, preview)
+                daemon_reload()
+            except SudoError as exc:
+                self.log_error(str(exc))
+                return
+            if backup:
+                self.log_info(f"Backed up: {backup}")
+            self.log_status(True, f"Wrote {path}")
+            self.reload_mission_list(select=self.current_instance)
+
+        summary = f"Write {path}?\n\n{preview}"
+        self.push_screen(ConfirmScreen(summary), check)
+
+    def action_toggle_enable(self) -> None:
+        if self.current_instance is None:
+            return
+        ok, message = systemctl_toggle_enable(unit_name(self.current_instance))
+        self.log_status(ok, message)
+        self.reload_mission_list(select=self.current_instance)
+
+    def action_toggle_active(self) -> None:
+        if self.current_instance is None:
+            return
+        ok, message = systemctl_toggle_active(unit_name(self.current_instance))
+        self.log_status(ok, message)
+        self.reload_mission_list(select=self.current_instance)
+
+
+### ---------------------------------------------------------------------
+### Entry point
+### ---------------------------------------------------------------------
+
+def main() -> None:
+    preflight()
+    Ka9qRadioTUI().run()
+
+
+if __name__ == "__main__":
+    main()

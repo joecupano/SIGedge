@@ -21,6 +21,7 @@ An SDR must have only one active owner. Do not run `radiod` and a direct-access 
 | RX-888 host preparation | `devices/pkg_rx888` | Builds and stages volatile FX3 firmware, installs udev rules, configures USB buffering, and records a manifest |
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
 | Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
+| Radio mission configuration (TUI) | `scripts/cfg_ka9q-radio_tui` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control. Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
 | Reference configurations | `config/radiod@*.EXAMPLE` | Shows the current generated configuration shape |
 | ka9q-radio / OpenWebRX switch | `scripts/service_toggle` | Safely switches between ka9q-radio radiod missions and OpenWebRX, always stopping+disabling the side being left before starting the other |
 
@@ -188,6 +189,47 @@ sudo sed -n '1,240p' /etc/radio/radiod@hackrf-aprs.conf
 | `RTLSDR_CENTER_HZ` | RTL-SDR hardware center frequency | `144900000` |
 
 Serial overrides should be used only when supported by the installed ka9q-radio front end.
+
+### Interactive alternative
+
+`scripts/cfg_ka9q-radio_tui` is a standalone [Textual](https://textual.textualize.io/) app, styled after ka9q-radio's own `control` program (bordered panels, a live status list, single-letter hotkeys -- see `source/ka9q-radio/docs/utils/control.md` for `control`'s own key table): a mission list on the left (each row showing live enabled/active state), and on the right a tree of the selected mission's actual INI structure -- every section and every key/value pair, not a fixed field set.
+
+It supports full add/change/delete/update over the complete config surface:
+
+| Key | Action |
+|---|---|
+| `n` / `d` | New mission / delete mission (left-hand list) |
+| `a` | Add -- a section (cursor on the mission root) or a key (cursor on a section/key) |
+| `c` | Change the value of the key under the cursor |
+| `x` | Delete the key or section under the cursor |
+| `w` | Write the mission's config to disk (with a confirmation preview) |
+| `s` / `t` | Toggle enabled-at-boot / toggle running now, for the selected mission |
+| `r` | Refresh status |
+| Tab | Switch focus between the mission list and the config tree |
+
+**Design note:** this app writes `/etc/radio/radiod@<instance>.conf` directly (via `sudo tee`, after a timestamped backup -- the same convention as `cfg_ka9q-radio`'s own `backup_config`) instead of shelling out to `cfg_ka9q-radio`. `cfg_ka9q-radio` can only regenerate its three fixed, single-channel reference templates through a handful of environment variables; it has no way to express "add this new key" or "create a mission that isn't rx888/hackrf/rtlsdr". Genuine add/change/delete/update over arbitrary config content needs a real INI-level editor, so this tool is now that editor. `cfg_ka9q-radio` itself is unchanged and remains the non-interactive generator `setup_services` uses for the three reference missions.
+
+Each mission's file is parsed with Python's `configparser` (order- and case-preserving) and values are kept exactly as written -- including ka9q-radio's own literal quoting of frequencies like `freq = "10m0"` -- so loading and re-saving a file without touching it round-trips byte-for-byte identically. Deleting a mission or a section/key never erases data outright: mission deletion renames the file aside with a `.<timestamp>.deleted` suffix, and every write backs up the previous version first, exactly like `cfg_ka9q-radio`.
+
+Requires the `textual` Python package, which is not part of any SIGedge setup script -- install it yourself the first time you use this tool. The Debian/Ubuntu `python3-textual` package is version 0.1.x, far too old for the widgets this app uses; two ways to get a current one instead:
+
+```bash
+# Quick: --user install, bypassing the "externally managed environment" guard.
+# This installs to ~/.local, not system-wide, so it can't collide with apt.
+pip install --user --break-system-packages textual
+```
+
+```bash
+# Isolated: a venv. Debian/Ubuntu strip ensurepip out of the base python3, so
+# `python3 -m venv` fails with "ensurepip is not available" until python3-venv
+# is installed first.
+sudo apt-get install -y python3-venv
+python3 -m venv scripts/.venv
+scripts/.venv/bin/pip install textual
+scripts/.venv/bin/python3 scripts/cfg_ka9q-radio_tui
+```
+
+Either way, once installed: `scripts/cfg_ka9q-radio_tui` (or `.venv/bin/python3 scripts/cfg_ka9q-radio_tui` for the venv path).
 
 ## 5. Enable and start explicitly
 
