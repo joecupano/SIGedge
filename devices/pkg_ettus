@@ -42,7 +42,11 @@ case "$1" in
         cd $SIGEDGE_PACKAGES
         if [[ "$SIGEDGE_HWARCH" == "x86_64" ]]; then
 	        cd $SIGEDGE_DEBS
-	        sudo dpkg -i uhd_current_amd64.deb
+	        if [[ ! -f uhd_current_amd64.deb ]]; then
+	            echo "ERROR: uhd_current_amd64.deb not found in $SIGEDGE_DEBS. Use the build action instead."
+	            return 1
+	        fi
+	        sudo dpkg -i uhd_current_amd64.deb || return 1
             cat $SIGEDGE_DEVLIST|grep "ettus" >> $SIGEDGE_INSTALLED_DEVICES
         fi
 

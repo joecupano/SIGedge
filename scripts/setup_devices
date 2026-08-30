@@ -63,7 +63,14 @@ if grep -qx 'bladerf' "$SIGEDGE_INSTALLED_DEVICES"; then
 fi
 
 if grep -qx 'ettus' "$SIGEDGE_INSTALLED_DEVICES"; then
-    source "$SIGEDGE_DEVICES/pkg_ettus" install || return 1
+    # Prefer the prebuilt UHD .deb when present; a clean checkout has none,
+    # so fall back to building UHD from source in that case.
+    if [[ -f "$SIGEDGE_DEBS/uhd_current_amd64.deb" ]]; then
+        source "$SIGEDGE_DEVICES/pkg_ettus" install || return 1
+    else
+        echo "No uhd_current_amd64.deb found in $SIGEDGE_DEBS; building UHD from source"
+        source "$SIGEDGE_DEVICES/pkg_ettus" build || return 1
+    fi
 fi
 
 if grep -qx 'fobos' "$SIGEDGE_INSTALLED_DEVICES"; then
