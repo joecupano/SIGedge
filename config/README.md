@@ -5,7 +5,7 @@ Various config files.
 **blacklist-msi.conf**    - Used by RTLSDR to blacklist drivers
 **banner_sigedge**        - Banners screens called by SIGpi-setup
 
-**openwebrx.service**     - Optional Service instead of radiod
+**openwebrx.service**     - Optional Service instead of radiod (switch safely with `scripts/service_toggle`)
 **rtltcp.service**        - Optional Service instead of radiod
 **sdrangelsrv.service**   - Optional Service instead of radiod
 

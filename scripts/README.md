@@ -22,6 +22,15 @@ but further configuration is necessary for each service before enabling them.
 Directly sourced by **setup_services** during **SIGedge setup**.
 Reachable via **SIGedge config ka9q-radio <mission>**. 
 
+- **service_toggle**
+Safely switches between ka9q-radio and OpenWebRX, which are alternative
+deployments for the same SDR hardware and must never both be active at
+once. Always stops+disables the side being switched away from before
+enabling+starting the other, verifying each step against `systemctl`
+rather than assuming prior state. Run directly, e.g.
+`scripts/service_toggle status` or `scripts/service_toggle ka9q-radio`;
+not part of the `SIGedge` parent-script dispatch.
+
 ## Environment support
 - **SIGedge_env**
 Environment variables used by SIGedge project. Use as a template for your

@@ -1,0 +1,454 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### service_toggle
+###
+###
+### 20260830-0000
+###
+### ka9q-radio and OpenWebRX are alternative deployments for the same SDR
+### hardware (see KA9Q-DEPLOYMENT.md): "An SDR must have only one active
+### owner." This script switches between the two modes, always disabling
+### and stopping the side being switched away from before enabling and
+### starting the other -- so both are never left active at once.
+###
+### It never assumes what SIGedge's own setup scripts think is enabled --
+### every decision here is made by asking systemctl directly.
+###
+### Usage:
+###   scripts/service_toggle status
+###   scripts/service_toggle ka9q-radio [mission ...]
+###   scripts/service_toggle openwebrx
+###   scripts/service_toggle off
+###
+###   -y, --yes       Do not prompt for confirmation before stopping a
+###                   currently active service.
+###   -n, --dry-run   Print what would be done without changing anything.
+###
+###   status          Show enabled/active state of openwebrx.service and
+###                   every radiod@<mission>.service ka9q-radio owns.
+###   ka9q-radio      Stop+disable openwebrx.service, then enable+start
+###                   the named radiod@<mission> service(s). With no
+###                   mission given, start every mission that has a
+###                   generated /etc/radio/radiod@<mission>.conf (see
+###                   scripts/cfg_ka9q-radio). Unrelated radiod@ missions
+###                   already running are left alone -- distinct SDR
+###                   hardware can run distinct missions concurrently.
+###   openwebrx       Stop+disable every radiod@ mission ka9q-radio has
+###                   running, then enable+start openwebrx.service.
+###   off             Stop+disable both sides. Leaves no receiver running.
+###
+### This script may be executed directly or sourced by a SIGedge parent
+### script, matching scripts/cfg_ka9q-radio's convention.
+###
+
+KA9Q_CONFIG_DIR="${KA9Q_CONFIG_DIR:-/etc/radio}"
+OPENWEBRX_UNIT="openwebrx.service"
+
+ASSUME_YES=0
+DRY_RUN=0
+TARGET=""
+MISSIONS=()
+
+
+toggle_return()
+{
+    local rc="$1"
+
+    if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+        return "$rc"
+    fi
+
+    exit "$rc"
+}
+
+
+toggle_error()
+{
+    echo -e "${SIGEDGE_BANNER_COLOR:-}"
+    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: $*"
+    echo -e "${SIGEDGE_BANNER_RESET:-}"
+}
+
+
+toggle_banner()
+{
+    echo -e "${SIGEDGE_BANNER_COLOR:-}"
+    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  $*"
+    echo -e "${SIGEDGE_BANNER_RESET:-}"
+}
+
+
+usage()
+{
+    echo "Usage: ${BASH_SOURCE[0]} [-y|--yes] [-n|--dry-run] {status|ka9q-radio [mission ...]|openwebrx|off}"
+}
+
+
+### ---------------------------------------------------------------------
+### Argument parsing
+### ---------------------------------------------------------------------
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -y|--yes )
+            ASSUME_YES=1
+            shift
+            ;;
+        -n|--dry-run )
+            DRY_RUN=1
+            shift
+            ;;
+        status|ka9q-radio|openwebrx|off )
+            if [[ -n "$TARGET" ]]; then
+                toggle_error "Only one target may be given (already have '$TARGET')"
+                usage
+                toggle_return 1
+            fi
+            TARGET="$1"
+            shift
+            ;;
+        -h|--help )
+            usage
+            toggle_return 0
+            ;;
+        * )
+            if [[ "$TARGET" == "ka9q-radio" ]]; then
+                MISSIONS+=("$1")
+                shift
+            else
+                toggle_error "Unrecognized argument: $1"
+                usage
+                toggle_return 1
+            fi
+            ;;
+    esac
+done
+
+if [[ -z "$TARGET" ]]; then
+    usage
+    toggle_return 1
+fi
+
+
+### ---------------------------------------------------------------------
+### Helpers
+### ---------------------------------------------------------------------
+
+run()
+{
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "  [dry-run] $*"
+    else
+        "$@"
+    fi
+}
+
+
+unit_exists()
+{
+    systemctl cat "$1" >/dev/null 2>&1
+}
+
+
+unit_is_enabled()
+{
+    systemctl is-enabled --quiet "$1" 2>/dev/null
+}
+
+
+unit_is_active()
+{
+    systemctl is-active --quiet "$1" 2>/dev/null
+}
+
+
+confirm()
+{
+    local prompt="$1"
+
+    if [[ "$ASSUME_YES" == "1" ]]; then
+        return 0
+    fi
+
+    local reply
+    read -r -p "$prompt [y/N] " reply
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+
+require_privileges()
+{
+    if [[ "$DRY_RUN" == "1" ]]; then
+        return 0
+    fi
+
+    if ! sudo -n true 2>/dev/null; then
+        # This intentionally allows sudo to prompt when a cached credential
+        # is not present.
+        sudo true || {
+            toggle_error "sudo privileges are required"
+            return 1
+        }
+    fi
+}
+
+
+# Every radiod@ mission systemd currently knows about, from any source:
+# a SIGedge-generated /etc/radio/radiod@<mission>.conf, or a unit that is
+# merely enabled, active, or loaded. Used when clearing ka9q-radio out of
+# the way for OpenWebRX and for status -- it must not miss anything just
+# because SIGedge itself didn't generate it.
+list_radiod_units()
+{
+    local -A seen=()
+    local f name unit
+
+    if [[ -d "$KA9Q_CONFIG_DIR" ]]; then
+        for f in "$KA9Q_CONFIG_DIR"/radiod@*.conf; do
+            [[ -e "$f" ]] || continue
+            name="$(basename "$f")"
+            name="${name#radiod@}"
+            name="${name%.conf}"
+            seen["radiod@${name}.service"]=1
+        done
+    fi
+
+    # The 'radiod@*.service' glob also matches the bare template unit
+    # itself, radiod@.service (empty instance name) -- that is not a
+    # mission and must never be enabled/disabled/started/stopped here.
+    while IFS= read -r unit; do
+        [[ "$unit" =~ ^radiod@..*\.service$ ]] && seen["$unit"]=1
+    done < <(systemctl list-units --all --type=service --no-legend --plain 'radiod@*.service' 2>/dev/null | awk '{print $1}')
+
+    while IFS= read -r unit; do
+        [[ "$unit" =~ ^radiod@..*\.service$ ]] && seen["$unit"]=1
+    done < <(systemctl list-unit-files --no-legend --plain 'radiod@*.service' 2>/dev/null | awk '{print $1}')
+
+    if (( ${#seen[@]} > 0 )); then
+        printf '%s\n' "${!seen[@]}" | sort
+    fi
+}
+
+
+# Missions SIGedge has actually generated a configuration for -- the
+# default set to start when `ka9q-radio` is requested with no mission
+# named explicitly.
+list_configured_missions()
+{
+    local f name
+
+    [[ -d "$KA9Q_CONFIG_DIR" ]] || return 0
+
+    for f in "$KA9Q_CONFIG_DIR"/radiod@*.conf; do
+        [[ -e "$f" ]] || continue
+        name="$(basename "$f")"
+        name="${name#radiod@}"
+        name="${name%.conf}"
+        echo "$name"
+    done
+}
+
+
+print_unit_state()
+{
+    local unit="$1"
+
+    if ! unit_exists "$unit"; then
+        printf '  %-32s not installed\n' "$unit"
+        return
+    fi
+
+    local enabled active
+    enabled="$(systemctl is-enabled "$unit" 2>/dev/null)"
+    [[ -z "$enabled" ]] && enabled="disabled"
+    active="$(systemctl is-active "$unit" 2>/dev/null)"
+    [[ -z "$active" ]] && active="inactive"
+    printf '  %-32s enabled=%-10s active=%s\n' "$unit" "$enabled" "$active"
+}
+
+
+# Stop and disable a unit, but only if it is actually enabled or active --
+# and confirm with the operator first, since this is what makes switching
+# modes "safe": the previous receiver is torn down deliberately, not
+# silently left running alongside the new one.
+stop_unit()
+{
+    local unit="$1"
+
+    if ! unit_exists "$unit"; then
+        return 0
+    fi
+
+    local was_active=0 was_enabled=0
+    unit_is_active "$unit" && was_active=1
+    unit_is_enabled "$unit" && was_enabled=1
+
+    if (( ! was_active && ! was_enabled )); then
+        return 0
+    fi
+
+    if ! confirm "Stop and disable $unit?"; then
+        toggle_error "Refusing to continue with $unit left active"
+        return 1
+    fi
+
+    if (( was_active )); then
+        echo "Stopping $unit"
+        run sudo systemctl stop "$unit" || return 1
+    fi
+
+    if (( was_enabled )); then
+        echo "Disabling $unit"
+        run sudo systemctl disable "$unit" || return 1
+    fi
+
+    if [[ "$DRY_RUN" != "1" ]] && unit_is_active "$unit"; then
+        toggle_error "$unit is still active after stopping it"
+        return 1
+    fi
+}
+
+
+start_unit()
+{
+    local unit="$1"
+
+    if ! unit_exists "$unit"; then
+        toggle_error "$unit is not installed"
+        return 1
+    fi
+
+    echo "Enabling and starting $unit"
+    run sudo systemctl enable --now "$unit" || return 1
+
+    if [[ "$DRY_RUN" != "1" ]] && ! unit_is_active "$unit"; then
+        toggle_error "$unit did not reach the active state"
+        systemctl --no-pager --full status "$unit" || true
+        return 1
+    fi
+}
+
+
+### ---------------------------------------------------------------------
+### Actions
+### ---------------------------------------------------------------------
+
+do_status()
+{
+    toggle_banner "Service status"
+
+    echo "OpenWebRX:"
+    print_unit_state "$OPENWEBRX_UNIT"
+
+    echo
+    echo "ka9q-radio radiod missions:"
+    local units
+    mapfile -t units < <(list_radiod_units)
+    if (( ${#units[@]} == 0 )); then
+        echo "  (none configured -- see scripts/cfg_ka9q-radio)"
+    else
+        local u
+        for u in "${units[@]}"; do
+            print_unit_state "$u"
+        done
+    fi
+}
+
+
+do_ka9q_radio()
+{
+    if ! systemctl cat radiod@.service >/dev/null 2>&1; then
+        toggle_error "radiod@.service systemd template not found -- is ka9q-radio installed?"
+        return 1
+    fi
+
+    local missions=("${MISSIONS[@]}")
+    if (( ${#missions[@]} == 0 )); then
+        mapfile -t missions < <(list_configured_missions)
+    fi
+
+    if (( ${#missions[@]} == 0 )); then
+        toggle_error "No radiod missions given and none configured. Run scripts/cfg_ka9q-radio first."
+        return 1
+    fi
+
+    local m
+    for m in "${missions[@]}"; do
+        if [[ ! -f "${KA9Q_CONFIG_DIR}/radiod@${m}.conf" ]]; then
+            toggle_error "No ${KA9Q_CONFIG_DIR}/radiod@${m}.conf for mission '$m' -- run scripts/cfg_ka9q-radio"
+            return 1
+        fi
+    done
+
+    toggle_banner "Switching to ka9q-radio: ${missions[*]}"
+
+    stop_unit "$OPENWEBRX_UNIT" || return 1
+
+    for m in "${missions[@]}"; do
+        start_unit "radiod@${m}.service" || return 1
+    done
+}
+
+
+do_openwebrx()
+{
+    if ! unit_exists "$OPENWEBRX_UNIT"; then
+        toggle_error "$OPENWEBRX_UNIT is not installed -- is OpenWebRX installed?"
+        return 1
+    fi
+
+    toggle_banner "Switching to OpenWebRX"
+
+    local units u
+    mapfile -t units < <(list_radiod_units)
+    for u in "${units[@]}"; do
+        stop_unit "$u" || return 1
+    done
+
+    start_unit "$OPENWEBRX_UNIT" || return 1
+}
+
+
+do_off()
+{
+    toggle_banner "Stopping both ka9q-radio and OpenWebRX"
+
+    stop_unit "$OPENWEBRX_UNIT" || return 1
+
+    local units u
+    mapfile -t units < <(list_radiod_units)
+    for u in "${units[@]}"; do
+        stop_unit "$u" || return 1
+    done
+}
+
+
+### ---------------------------------------------------------------------
+### Main
+### ---------------------------------------------------------------------
+
+case "$TARGET" in
+    status )
+        do_status || toggle_return 1
+        ;;
+
+    ka9q-radio )
+        require_privileges || toggle_return 1
+        do_ka9q_radio || toggle_return 1
+        ;;
+
+    openwebrx )
+        require_privileges || toggle_return 1
+        do_openwebrx || toggle_return 1
+        ;;
+
+    off )
+        require_privileges || toggle_return 1
+        do_off || toggle_return 1
+        ;;
+esac
+
+toggle_return 0

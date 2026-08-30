@@ -22,6 +22,7 @@ An SDR must have only one active owner. Do not run `radiod` and a direct-access 
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
 | Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
 | Reference configurations | `config/radiod@*.EXAMPLE` | Shows the current generated configuration shape |
+| ka9q-radio / OpenWebRX switch | `scripts/service_toggle` | Safely switches between ka9q-radio radiod missions and OpenWebRX, always stopping+disabling the side being left before starting the other |
 
 Package installation and radio mission configuration are intentionally separate. Installing ka9q-radio does not create or start a radio-specific `radiod` instance.
 
@@ -236,6 +237,19 @@ sudo systemctl disable radiod@hackrf-aprs
 ```
 
 Stopping `radiod` releases the SDR for an explicitly selected direct-access service. Stop that direct-access service before returning the device to ka9q-radio.
+
+### Switching to or from OpenWebRX
+
+ka9q-radio and OpenWebRX (`packages/pkg_openwebrx`, `config/openwebrx.service`) are alternative deployments for the same SDR hardware and must not both be active. Rather than stopping/disabling each side by hand, use `scripts/service_toggle`, which discovers whichever `radiod@<mission>` instances are actually configured or running (it does not assume the reference missions above are the only ones), stops+disables the side being left, and verifies the result against `systemctl` rather than trusting prior state:
+
+```bash
+scripts/service_toggle status                    # show current state of both sides
+scripts/service_toggle ka9q-radio [mission ...]   # switch to ka9q-radio
+scripts/service_toggle openwebrx                  # switch to OpenWebRX
+scripts/service_toggle off                        # stop+disable both
+```
+
+It prompts before stopping anything currently active (`-y` to skip) and supports `-n`/`--dry-run` to preview the `systemctl` calls it would make.
 
 ## Troubleshooting
 
