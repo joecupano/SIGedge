@@ -1,18 +1,28 @@
 # Scripts
 
-These scripts are called during SIGpi installation. SOme of them in turn call the scripts in **devices** and **package**
+## First time setup
+When **./SIGedge setup** is run it calls the following scripts in order:
 
-## setup_start 
-called by **SIGedge** Depending on options passed either **setup_core** or **setup_devices** are run next
+- **setup_start**
+starts a menu to select devices and services
 
-## setup_core
-Installs devices selected, core packages, running **setup_devices**, **setup_core_packages** respectively
+- **setup_core**
+installs baseline software and libraries used across packages.
 
-## Various support scripts
+- **setup_device**
+installs drivers and supporting software for devices. Each device has
+its own **scripts/pkg_<device>** for installation and removal.
 
-**SIGedge_env**
-**SIGedge_exec-in-shell**
-**run_SDRplay.sh**
-**run_direwolf.sh**
-**run_sdrangel.sh**
-**run_urh.sh**
+- **setup_services**
+installs and setups services that use the devices. The services are setup
+but further configuration is necessary for each service before enabling them.
+
+## Services ##
+- **cfg_ka9q-radio**
+Directly sourced by **setup_services** during **SIGedge setup**.
+Reachable via **SIGedge config ka9q-radio <mission>**. 
+
+## Environment support
+- **SIGedge_env**
+Environment variables used by SIGedge project. Use as a template for your
+own custom scripts>
