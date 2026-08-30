@@ -180,12 +180,12 @@ if [ "$2" = "soapysdrsrv" ]; then
     echo "sigpi-node_soapysdrsrv" >> $SIGEDGE_INSTALLED
 fi
 
-# Install OpenWebRX
-if [ "$2" = "openwebrx" ]; then
-    source $SIGEDGE_PACKAGES/pkg_openwebrx install
-    sudo cp $SIGEDGE_CONFIG/scripts/openwebrx.service /etc/systemd/system/openwebrx.service
-    echo "sigpi-node_openwebrx" >> $SIGEDGE_INSTALLED
-fi
+# OpenWebRX is installed unconditionally by setup_services (see there),
+# left disabled. This block used to duplicate that install here, gated on
+# "$2" = "openwebrx" -- but $2 is SIGedge's own second CLI argument, never
+# actually set to "openwebrx" by anything (the whiptail checklist above
+# records selections into $SIGEDGE_INSTALLED_SERVICES instead), so this was
+# unreachable dead code. Removed rather than fixed in place.
 
 echo -e "${SIGEDGE_BANNER_COLOR}"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"

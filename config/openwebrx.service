@@ -6,8 +6,8 @@ After=network-online.target
 
 [Service]
 ExecStartPre=/bin/sleep 15
-ExecStart=/bin/sh -c "openwebrx.py"
-WorkingDirectory=/home/pi
+ExecStart=/bin/sh -c "@openwebrxdir@/openwebrx.py"
+WorkingDirectory=@openwebrxdir@
 StandardOutput=inherit
 StandardError=inherit
 Restart=always

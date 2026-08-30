@@ -8,8 +8,10 @@
 ###
 ### 20260828-0000
 ###
-### Install shared services and prepare selected ka9q-radio receivers.
-### Receiver units are configured but are not enabled or started.
+### Install shared services (ka9q-radio, OpenWebRX) and prepare selected
+### ka9q-radio receivers. Nothing here is enabled or started -- which
+### deployment to run, and which receivers to activate, are explicit
+### operator decisions made after installation.
 ###
 
 echo -e "${SIGEDGE_BANNER_COLOR}"
@@ -21,6 +23,12 @@ echo -e "${SIGEDGE_BANNER_RESET}"
 # Generate FFT wisdom and install the default ISM decoder.
 source "$SIGEDGE_PACKAGES/pkg_fftw" install || return 1
 source "$SIGEDGE_PACKAGES/pkg_rtl_433" install || return 1
+
+# ka9q-radio and OpenWebRX are alternative deployments for the same SDR
+# hardware (see README.md). Both get installed here; pkg_openwebrx leaves
+# its systemd unit disabled, same as ka9q-radio's radiod missions below --
+# which one to actually run is an explicit operator decision made later.
+source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
 
 # Prefer release packages when present. ka9q-radio now packages as multiple
 # .deb files (see KA9Q_RADIO_PKGS in pkg_ka9q-radio) built into

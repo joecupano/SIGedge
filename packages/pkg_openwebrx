@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###
-### SIGpi
+### SIGedge
 ###
 ### pkg_openwebrx
 ###
@@ -110,8 +110,6 @@ case "$1" in
         cd pydigiham
         sudo python3 setup.py install
 
-        ## Codec2 install as part of SIGpi
-
         ### m17-cxx-demod
         cd $SIGEDGE_SOURCE
         sudo apt-get install libboost-program-options-dev
@@ -122,15 +120,13 @@ case "$1" in
         make
         sudo make install
 
-        ## DireWolf install as part of SIGpi
-
         ## PACKAGE
         cd $SIGEDGE_SOURCE
         git clone https://github.com/jketterl/openwebrx.git
 
         ### Data Storage
         sudo mkdir /var/lib/openwebrx
-        sudo chown pi /var/lib/openwebrx
+        sudo chown "$USER" /var/lib/openwebrx
         touch /var/lib/openwebrx/users.json
         touch /var/lib/openwebrx/bands.json
 
@@ -139,26 +135,29 @@ case "$1" in
         #touch $SIGEDGE_ROOT/openwebrx-store/users.json
         #touch $SIGEDGE_ROOT/openwebrx-store/bands.json
 
-        ### Run OpenWebRX to complete setup
+        ### Run OpenWebRX once, unmanaged, only to let it initialize its data
+        ### directory/default config -- then stop it. The systemd unit below
+        ### is what actually runs it going forward, once an operator enables it.
         cd $SIGEDGE_SOURCE/openwebrx
-        ./openwebrx.py&
+        ./openwebrx.py &
+        OPENWEBRX_INIT_PID=$!
         sleep 5
+        kill "$OPENWEBRX_INIT_PID" 2>/dev/null
+        wait "$OPENWEBRX_INIT_PID" 2>/dev/null
 
-        ### Create initial user for WebUI
-        cd $SIGEDGE_SOURCE/openwebrx
-        ./openwebrx.py admin adduser pi
+        ### Initial web-UI admin user is intentionally not created here: it
+        ### would require an interactive password prompt, which hangs an
+        ### unattended setup_services run. Create it explicitly once you've
+        ### decided to actually use OpenWebRX:
+        echo "OpenWebRX installed but not enabled. To create the web UI admin user:"
+        echo "  cd $SIGEDGE_SOURCE/openwebrx && ./openwebrx.py admin adduser <username>"
 
-        ### Setup and enable systemd service
-        sudo cp $SIGEDGE_SOURCE/scripts/openwebrx.service /etc/systemd/system/openwebrx.service
+        ### Setup systemd service (left disabled -- enabling is an explicit,
+        ### separate operator decision, matching how ka9q-radio is handled)
+        sed -e "s|@openwebrxdir@|$SIGEDGE_SOURCE/openwebrx|g" \
+            "$SIGEDGE_CONFIG/openwebrx.service" | sudo tee /etc/systemd/system/openwebrx.service >/dev/null
+        sudo systemctl daemon-reload
         cat $SIGEDGE_PKGLIST|grep "openwebrx" >> $SIGEDGE_INSTALLED
-        sleep 5
-        sudo systemctl enable openwebrx
-
-        ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        # Change Category
-	    # Add to Menu
         ;;&
 
     package )
