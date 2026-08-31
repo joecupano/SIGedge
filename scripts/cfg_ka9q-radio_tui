@@ -1,33 +1,90 @@
 #!/usr/bin/env python3
 """SIGedge -- cfg_ka9q-radio_tui
 
-20260830-0000
+20260831-0000
 
-Standalone Textual TUI for full add/change/delete/update of ka9q-radio
-radiod mission configurations (/etc/radio/radiod@<instance>.conf) and their
-systemd state, styled after ka9q-radio's own `control` program: bordered
-panels, a live mission list, and a cursor-driven, single-letter-hotkey
-editor (see source/ka9q-radio/docs/utils/control.md for that program's own
-key table).
+Standalone Textual TUI for browsing existing ka9q-radio radiod configs and
+building new ones from them, styled after ka9q-radio's own `control`
+program: bordered panels and a cursor-driven, single-letter-hotkey editor
+(see source/ka9q-radio/docs/utils/control.md for that program's own key
+table).
 
-Design note -- this app writes configuration files directly (via `sudo
-tee`, with a timestamped backup first, same convention as
-scripts/cfg_ka9q-radio's own backup_config) rather than shelling out to
-cfg_ka9q-radio. cfg_ka9q-radio can only regenerate its three fixed,
-single-channel reference templates through a handful of environment
-variables; it has no way to express "add this new key", "add a whole new
-section", or "create a mission that isn't rx888/hackrf/rtlsdr". Genuine
-add/change/delete/update over the complete config surface needs a real
-INI-level editor, so this tool is now that editor. cfg_ka9q-radio is
-untouched and remains the non-interactive generator setup_services uses
-for the three reference missions.
+Two-pane left column, one read-only and one writable, each a small file
+browser (Enter on a "name/" row descends, Enter on ".." goes back up),
+feeding a shared config editor on the right:
 
-Every mission's config is parsed with Python's configparser (preserving
-section/key order and exact key case) and rendered as a Tree: mission ->
-sections -> key/value leaves. Missions themselves (not just their content)
-support add/delete from the left-hand list, mirroring control's directness
--- one key per action, applied immediately with a confirmation, not staged
-behind a multi-field form.
+  - Source (upper-left, read-only) -- browses whatever directory of
+    existing radiod@<instance>.conf files is currently selected ('o' to
+    jump straight to one, or Enter/'..' to navigate there). Starts
+    pointed at /usr/share/ka9q-radio/examples, the vendor example configs
+    installed by the ka9q-radio packages, referenced throughout
+    source/ka9q-radio/docs/SDR/*.md; the live mission directory
+    (/etc/radio, overridable via $KA9Q_CONFIG_DIR) is the other one-click
+    preset. Browsing is unconfined -- '..' works all the way to /. This
+    app never opens anything under Source for writing -- highlighting a
+    conf-file row only loads a *copy* into the editor.
+  - Destination (lower-left, writable) -- the operator's own scratch
+    space, starting at /tmp but, like Source, freely navigable anywhere
+    with Enter/'..'. 'w' Write always lands in whatever Destination
+    directory is currently browsed, as radiod@<instance>.conf, whether
+    the editor's content started from a Source file or from 'n' New --
+    so editing an example and writing it never overwrites the example
+    itself, wherever Destination happens to be pointed. 'x' Delete
+    (Destination) removes a file there the same way; 's'/'t' toggle the
+    real radiod@<instance>.service matching whatever's selected in
+    Destination (a note is logged if /etc/radio has no matching config,
+    since that's what radiod itself actually reads, wherever Destination
+    is currently pointed). None of this needs or uses sudo -- every
+    Destination write/delete runs with the filesystem permissions of
+    whoever launched this script, exactly like any other program they
+    run; navigate somewhere they can't write and the OS simply refuses
+    it, reported the same way any other failed write here is.
+
+The editor pane (right, full height) parses each config with Python's
+configparser (preserving section/key order and exact key case) and
+renders it as a Tree: mission -> sections -> key/value leaves, with
+add/change/delete ('a'/'c'/'x') applied immediately to the in-memory copy
+-- nothing reaches disk until 'w' Write, and that always targets
+Destination, wherever it's currently browsing.
+
+Design note -- earlier versions of this tool wrote configs straight into
+/etc/radio via `sudo tee` (mirroring scripts/cfg_ka9q-radio's own
+backup_config convention). That's gone: every save is now a plain,
+unprivileged write under whatever directory Destination is currently
+browsing (starting at /tmp), so building/trying a config here never
+risks the live mission set through elevated privilege -- though nothing
+stops the operator from deliberately navigating Destination to a live
+directory they otherwise have write access to and saving there directly.
+cfg_ka9q-radio is untouched and remains the non-interactive generator
+setup_services uses for the three reference templates; this tool is for
+genuine add/change/delete/update over the complete config surface --
+including starting from any vendor example -- without cfg_ka9q-radio's
+fixed single-channel template limits.
+
+Advanced settings ('v') -- a curated picklist, offered against whatever
+section the cursor is on in the editor, classified into one of three
+catalogs by comparing the section name against [global]'s "hardware ="
+value (the same test radiod itself uses, see docs/ka9q-radio-2.md):
+  - [global] itself -> GLOBAL_ADVANCED_SETTINGS: less-common global-only
+    keys (ttl, tos, blocktime, overlap, fft-threads, dns, rtcp, sap,
+    mode-file, wisdom-file).
+  - the section named by [global]'s "hardware =" -> HARDWARE_ADVANCED_SETTINGS
+    keyed by that section's own "device =" value (hackrf/rx888/rtlsdr/
+    sig_gen have real catalogs; anything else falls back to a generic
+    description/serial/samprate list).
+  - every other section (a channel/preset group) -> CHANNEL_ADVANCED_SETTINGS:
+    the per-channel tuning keys ka9q-radio's own `control` program exposes
+    via single-letter hotkeys (AGC threshold/recovery-rate/hang-time/
+    headroom, PLL bandwidth, squelch open/close/tail, de-emphasis,
+    kaiser-beta, filter2, encoding, bitrate, status update interval,
+    output buffering).
+All of these are keys this editor's plain "add a key" flow already
+accepted; the catalogs just supply a name, a documented default, and a
+one-line explanation instead of requiring the operator to already know
+them. Picking one offers a choice of adding it live (active key=value) or
+as a commented-out note, applied straight to the in-memory editor copy
+like any other 'a'/'c' edit -- it shows up in the tree immediately and
+only reaches disk (in /tmp) via the usual 'w' Write.
 
 Usage:
     scripts/cfg_ka9q-radio_tui
@@ -45,7 +102,6 @@ import subprocess
 import sys
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 try:
@@ -62,10 +118,12 @@ try:
         Header,
         Input,
         Label,
+        OptionList,
         RichLog,
         Static,
         Tree,
     )
+    from textual.widgets.option_list import Option
     from textual.widgets.tree import TreeNode
 except ImportError:
     print(
@@ -84,7 +142,16 @@ except ImportError:
     sys.exit(1)
 
 
-KA9Q_CONFIG_DIR = Path(os.environ.get("KA9Q_CONFIG_DIR", "/etc/radio"))
+# Starting points for the two browsable panes -- both are freely
+# navigable from there (Source via 'o' or in-pane Enter/'..'; Destination
+# via in-pane Enter/'..' only), so these are defaults, not confinement.
+# LIVE_CONFIG_DIR is also what "is this mission actually live?" checks
+# compare against regardless of where Destination has since navigated to
+# (see _live_config_note).
+DEFAULT_SOURCE_DIR = Path("/usr/share/ka9q-radio/examples")
+LIVE_CONFIG_DIR = Path(os.environ.get("KA9Q_CONFIG_DIR", "/etc/radio"))
+KNOWN_SOURCE_DIRS = [DEFAULT_SOURCE_DIR, LIVE_CONFIG_DIR]
+DEST_DIR = Path("/tmp")
 
 
 ### ---------------------------------------------------------------------
@@ -95,6 +162,31 @@ KA9Q_CONFIG_DIR = Path(os.environ.get("KA9Q_CONFIG_DIR", "/etc/radio"))
 ### ---------------------------------------------------------------------
 
 SectionDict = "OrderedDict[str, OrderedDict[str, str]]"
+
+
+def _join_backslash_continuations(lines: list[str]) -> list[str]:
+    """radiod's own config reader (libiniparser) lets a value run onto the
+    next physical line with a trailing '\\' -- used for the very long
+    'freq = "..."' lists in several shipped examples (see e.g.
+    /usr/share/ka9q-radio/examples/radiod@rx888-generic.conf's [HFDL]
+    section). Python's configparser has no such syntax and raises
+    ParsingError on the unindented continuation lines, so merge them into
+    one logical line first. The merged single-line result is what this
+    editor then always writes back out -- functionally identical (radiod
+    just sees one value either way) though no longer wrapped for a text
+    editor's line width."""
+    merged: list[str] = []
+    buf: str | None = None
+    for line in lines:
+        buf = line if buf is None else buf + " " + line.strip()
+        if buf.rstrip().endswith("\\"):
+            buf = buf.rstrip()[:-1].rstrip()
+            continue
+        merged.append(buf)
+        buf = None
+    if buf is not None:
+        merged.append(buf)
+    return merged
 
 
 @dataclass
@@ -117,7 +209,7 @@ class RadiodConfig:
 
         parser = configparser.ConfigParser(strict=False)
         parser.optionxform = str  # preserve key case exactly; don't lowercase
-        parser.read_string("\n".join(body_lines))
+        parser.read_string("\n".join(_join_backslash_continuations(body_lines)))
 
         sections: SectionDict = OrderedDict()
         for name in parser.sections():
@@ -148,18 +240,40 @@ class RadiodConfig:
         return "\n".join(parts).rstrip("\n") + "\n"
 
 
-def conf_path(instance: str) -> Path:
-    return KA9Q_CONFIG_DIR / f"radiod@{instance}.conf"
+def conf_filename(instance: str) -> str:
+    return f"radiod@{instance}.conf"
 
 
-def discover_missions() -> list[str]:
-    if not KA9Q_CONFIG_DIR.is_dir():
+def source_path(source_dir: Path, instance: str) -> Path:
+    return source_dir / conf_filename(instance)
+
+
+def dest_path(dest_dir: Path, instance: str) -> Path:
+    return dest_dir / conf_filename(instance)
+
+
+def discover_confs(directory: Path) -> list[str]:
+    if not directory.is_dir():
         return []
     instances = []
-    for path in sorted(KA9Q_CONFIG_DIR.glob("radiod@*.conf")):
+    for path in sorted(directory.glob("radiod@*.conf")):
         name = path.name[len("radiod@"):-len(".conf")]
         instances.append(name)
     return instances
+
+
+def list_dir_entries(directory: Path) -> tuple[list[str], list[str]]:
+    """(subdirectory names, radiod@<instance> conf instance names) directly
+    inside one directory, each sorted -- feeds both the Source and
+    Destination panes' navigable listings (see reload_source_list /
+    reload_dest_list). Dotfiles/dotdirs are skipped as clutter."""
+    if not directory.is_dir():
+        return [], []
+    dirs = sorted(
+        (p.name for p in directory.iterdir() if p.is_dir() and not p.name.startswith(".")),
+        key=str.lower,
+    )
+    return dirs, discover_confs(directory)
 
 
 def unit_name(instance: str) -> str:
@@ -174,57 +288,206 @@ def valid_name(name: str) -> bool:
 
 
 ### ---------------------------------------------------------------------
-### Privileged filesystem/systemd operations. All go through `sudo -n` --
-### preflight() already made sure a cached credential exists, and failing
-### fast with a clear log message beats an in-app hang waiting for a
-### password prompt the alternate screen can't render.
+### Advanced settings catalogs -- keys this editor's generic "add a key"
+### flow already accepts, just given a name, a default, and a one-line
+### explanation instead of requiring the operator to already know them.
+###
+### Three separate catalogs, because [global], a front-end/hardware
+### section and a channel/preset section all take entirely different keys
+### -- radiod rejects (or silently ignores) a channel-only key like "gain"
+### in [global], and vice versa:
+###
+### - GLOBAL_ADVANCED_SETTINGS: the less-common [global]-only keys, from
+###   docs/ka9q-radio.md. (The handful already hinted at by the plain 'a'
+###   add-key prompt -- hardware, status, data, iface, mode -- are left
+###   out here; this catalog covers what that hint doesn't.)
+### - HARDWARE_ADVANCED_SETTINGS / HARDWARE_GENERIC_SETTINGS: front-end
+###   keys, keyed by the hardware section's own "device =" value -- see
+###   the comment above HARDWARE_ADVANCED_SETTINGS.
+### - CHANNEL_ADVANCED_SETTINGS: the per-channel tuning keys ka9q-radio's
+###   `control` program exposes through single-letter hotkeys (see
+###   docs/utils/control.md and src/control.c), with defaults from
+###   src/defaults.h / docs/ka9q-radio-3.md.
 ### ---------------------------------------------------------------------
 
-class SudoError(RuntimeError):
-    pass
+GLOBAL_ADVANCED_SETTINGS: list[dict[str, str]] = [
+    {"key": "dns", "default": "no",
+     "desc": "Resolve 'data'/'status' names via DNS instead of publishing them as mDNS multicast"},
+    {"key": "ttl", "default": "0",
+     "desc": "IP TTL/hop-count on outbound traffic; 0 keeps multicast off the wire entirely"},
+    {"key": "tos", "default": "48",
+     "desc": "IP Type-of-Service field on outbound traffic; rarely needs changing on a LAN"},
+    {"key": "blocktime", "default": "20",
+     "desc": "Fast-convolution FFT block size, ms -- larger sharpens filters but adds latency/CPU"},
+    {"key": "overlap", "default": "5",
+     "desc": "Fast-convolution FFT overlap factor -- smaller sharpens filters at more CPU cost"},
+    {"key": "fft-threads", "default": "2",
+     "desc": "Worker threads for the shared forward FFT; 1 may reduce overhead on fast CPUs"},
+    {"key": "rtcp", "default": "no",
+     "desc": "Enable RTP Control Protocol -- incomplete/experimental, leave off"},
+    {"key": "sap", "default": "no",
+     "desc": "Enable Session Announcement Protocol -- experimental, leave off"},
+    {"key": "mode-file", "default": "/usr/local/share/ka9q-radio/presets.conf",
+     "desc": "Path to the mode/preset definition file used by 'mode ='"},
+    {"key": "wisdom-file", "default": "/var/lib/ka9q-radio/wisdom",
+     "desc": "Path where FFTW3 stores accumulated per-CPU FFT timing 'wisdom'"},
+]
 
+CHANNEL_ADVANCED_SETTINGS: list[dict[str, str]] = [
+    {"key": "gain", "default": "50.0",
+     "desc": "Linear demod manual/initial gain, dB (AGC overrides once running)"},
+    {"key": "rf-gain", "default": "",
+     "desc": "Front-end (RF) manual gain override, dB -- blank = driver auto"},
+    {"key": "rf-atten", "default": "",
+     "desc": "Front-end (RF) manual attenuation override, dB -- blank = driver auto"},
+    {"key": "threshold", "default": "-15.0",
+     "desc": "Linear AGC noise floor target, dB relative to headroom"},
+    {"key": "recovery-rate", "default": "20.0",
+     "desc": "Linear AGC gain recovery rate after hang-time expires, dB/s"},
+    {"key": "hang-time", "default": "1.1",
+     "desc": "Linear AGC hang time before gain recovery starts, seconds"},
+    {"key": "headroom", "default": "-15.0",
+     "desc": "Target output level, dBFS (keeps Gaussian signals from clipping)"},
+    {"key": "pll-bw", "default": "10.0",
+     "desc": "PLL loop filter bandwidth, Hz (linear demod, pll/square/sam modes)"},
+    {"key": "squelch-open", "default": "8.0",
+     "desc": "Squelch opens above this SNR, dB"},
+    {"key": "squelch-close", "default": "7.0",
+     "desc": "Squelch closes below this SNR, dB (hysteresis vs squelch-open)"},
+    {"key": "squelch-tail", "default": "1",
+     "desc": "Blocks squelch stays open after signal drops (0 = no tail, FM voice usually 1)"},
+    {"key": "deemph-tc", "default": "530.5",
+     "desc": "FM de-emphasis time constant, us (530.5 NBFM/300Hz corner; WFM uses 75.0)"},
+    {"key": "deemph-gain", "default": "12.0",
+     "desc": "FM de-emphasis makeup gain, dB (12.0 NBFM; WFM uses 0.0)"},
+    {"key": "threshold-extend", "default": "no",
+     "desc": "FM only -- experimental threshold extension to reduce popcorn noise near threshold"},
+    {"key": "kaiser-beta", "default": "11.0",
+     "desc": "Channel filter Kaiser window beta -- 0 disables, larger = better sidelobes/wider transition"},
+    {"key": "filter2", "default": "0",
+     "desc": "Linear demod secondary filter, blocks 0-4 (0 disables; sharper response, more latency/CPU)"},
+    {"key": "encoding", "default": "s16be",
+     "desc": "Output sample encoding: s16le, s16be, f32le, f16le, opus"},
+    {"key": "bitrate", "default": "0",
+     "desc": "Opus target bitrate, kb/s (0 = automatic; no effect on PCM encodings)"},
+    {"key": "update", "default": "25",
+     "desc": "Status update interval, frames (25 frames @ 20ms = 2 Hz)"},
+    {"key": "buffer", "default": "0",
+     "desc": "Output packet buffering, blocks 0-4 (0 = no buffering, one packet per frame)"},
+]
+
+# Front-end (SDR hardware) sections take a third, completely different key
+# set again -- keyed by the section's "device =" value (see src/<device>.c
+# config_get* calls), case-insensitive. Covers the front ends this project
+# actually packages (packages/pkg_ka9q-radio -> debs/ka9q-radio/*.deb):
+# hackrf, rx888, rtlsdr, sig_gen. Anything else (airspy, airspyhf, bladerf,
+# fobos, funcube, hydrasdr, sdrplay, ...) falls back to
+# HARDWARE_GENERIC_SETTINGS, which covers only the handful of keys common
+# to every front end driver.
+HARDWARE_ADVANCED_SETTINGS: dict[str, list[dict[str, str]]] = {
+    "hackrf": [
+        {"key": "description", "default": "",
+         "desc": "Free-text description advertised via mDNS/control (<=63 chars, no slashes)"},
+        {"key": "index", "default": "0",
+         "desc": "Which enumerated HackRF to open, when more than one is attached"},
+        {"key": "samprate", "default": "5000000",
+         "desc": "ADC sample rate, Hz"},
+        {"key": "lna-gain", "default": "14",
+         "desc": "RF/antenna-port gain, dB (0-40, 8dB steps) -- setting this disables software AGC"},
+        {"key": "mixer-gain", "default": "24",
+         "desc": "IF gain, dB (0-40, 8dB steps; HackRF's own API calls this 'lna gain')"},
+        {"key": "if-gain", "default": "20",
+         "desc": "Baseband VGA gain, dB (0-62, 2dB steps)"},
+        {"key": "frequency", "default": "",
+         "desc": "Lock the front end to a fixed center frequency, Hz -- blank lets radiod retune it per channel"},
+    ],
+    "rx888": [
+        {"key": "description", "default": "",
+         "desc": "Free-text description advertised via mDNS/control (<=63 chars, no slashes)"},
+        {"key": "serial", "default": "",
+         "desc": "Select a specific unit by serial number when more than one is attached"},
+        {"key": "samprate", "default": "",
+         "desc": "ADC sample rate, Hz -- blank leaves the driver default"},
+        {"key": "gain", "default": "9999",
+         "desc": "Front-end gain, dB (aliases: rfgain/rxgain/fegain) -- 9999 leaves it unset/auto"},
+        {"key": "att", "default": "9999",
+         "desc": "Front-end attenuation, dB (aliases: atten/featten/rfatten) -- 9999 leaves it unset/auto"},
+        {"key": "gainmode", "default": "",
+         "desc": "RF gain mode, driver-specific -- blank uses the default"},
+        {"key": "dither", "default": "no",
+         "desc": "Enable ADC dither"},
+        {"key": "rand", "default": "no",
+         "desc": "Enable ADC output randomizer (breaks up spurs)"},
+        {"key": "agc-low-threshold", "default": "-26.0",
+         "desc": "Increase RF gain when A/D level falls below this, dBFS"},
+        {"key": "agc-high-threshold", "default": "-15.0",
+         "desc": "Reduce RF gain when A/D level exceeds this, dBFS"},
+        {"key": "gaincal", "default": "1.4",
+         "desc": "RF level calibration offset, dB"},
+        {"key": "queuedepth", "default": "16",
+         "desc": "USB transfer queue depth"},
+        {"key": "reqsize", "default": "32",
+         "desc": "USB transfer request size, in 16k blocks"},
+    ],
+    "rtlsdr": [
+        {"key": "description", "default": "",
+         "desc": "Free-text description advertised via mDNS/control (<=63 chars, no slashes)"},
+        {"key": "serial", "default": "",
+         "desc": "Select a specific unit by serial number when more than one is attached"},
+        {"key": "samprate", "default": "1800000",
+         "desc": "ADC sample rate, Hz"},
+        {"key": "gain", "default": "0",
+         "desc": "Manual tuner gain, dB -- ignored when agc = yes"},
+        {"key": "agc", "default": "no",
+         "desc": "Enable the tuner's built-in hardware AGC"},
+        {"key": "bias", "default": "no",
+         "desc": "Enable bias-tee power on the antenna input"},
+        {"key": "direct_sampling", "default": "0",
+         "desc": "Direct sampling mode: 0=off, 1=I branch, 2=Q branch"},
+        {"key": "calibrate", "default": "0",
+         "desc": "Crystal frequency calibration offset, ppm"},
+    ],
+    "sig_gen": [
+        {"key": "description", "default": "",
+         "desc": "Free-text description advertised via mDNS/control (<=63 chars, no slashes)"},
+        {"key": "samprate", "default": "",
+         "desc": "Synthetic front-end sample rate, Hz"},
+        {"key": "carrier", "default": "",
+         "desc": "Carrier frequency offset, Hz"},
+        {"key": "amplitude", "default": "-10.0",
+         "desc": "Carrier amplitude, dBFS"},
+        {"key": "modulation", "default": "CW",
+         "desc": "Modulation applied to the carrier"},
+        {"key": "noise", "default": "101.0",
+         "desc": "Injected noise amplitude, dBFS (101 = off)"},
+        {"key": "n0", "default": "101.0",
+         "desc": "Injected noise spectral density, dBFS (101 = off)"},
+        {"key": "complex", "default": "no",
+         "desc": "Generate complex (I/Q) samples instead of real"},
+    ],
+}
+
+HARDWARE_GENERIC_SETTINGS: list[dict[str, str]] = [
+    {"key": "description", "default": "",
+     "desc": "Free-text description advertised via mDNS/control (<=63 chars, no slashes)"},
+    {"key": "serial", "default": "",
+     "desc": "Select a specific unit by serial number when more than one is attached"},
+    {"key": "samprate", "default": "",
+     "desc": "ADC/front-end sample rate, Hz -- blank leaves the driver default"},
+]
+
+
+### ---------------------------------------------------------------------
+### systemd helpers. Only 's'/'t' (enable/disable, start/stop) touch
+### systemd, and only via sudo; no config file write in this app needs
+### privilege any more (see DEST_DIR / dest_path above).
+### ---------------------------------------------------------------------
 
 def run_sudo(args: list[str], input_text: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["sudo", "-n", *args], input=input_text,
         capture_output=True, text=True, check=False,
     )
-
-
-def require_sudo_ok(result: subprocess.CompletedProcess, action: str) -> None:
-    if result.returncode != 0:
-        detail = result.stderr.strip() or f"exit {result.returncode}"
-        raise SudoError(f"{action} failed: {detail}")
-
-
-def sudo_mkdir(path: Path) -> None:
-    require_sudo_ok(run_sudo(["mkdir", "-p", str(path)]), f"mkdir -p {path}")
-
-
-def sudo_backup(path: Path) -> str | None:
-    if not path.exists():
-        return None
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    backup = path.with_name(f"{path.name}.{stamp}.bak")
-    require_sudo_ok(run_sudo(["cp", "-a", str(path), str(backup)]), f"backup {path}")
-    return str(backup)
-
-
-def sudo_write(path: Path, content: str) -> None:
-    sudo_mkdir(path.parent)
-    require_sudo_ok(run_sudo(["tee", str(path)], input_text=content), f"write {path}")
-    run_sudo(["chmod", "0664", str(path)])
-
-
-def sudo_soft_delete(path: Path) -> str:
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = path.with_name(f"{path.name}.{stamp}.deleted")
-    require_sudo_ok(run_sudo(["mv", str(path), str(dest)]), f"delete {path}")
-    return str(dest)
-
-
-def daemon_reload() -> None:
-    run_sudo(["systemctl", "daemon-reload"])
 
 
 def systemctl_query(unit: str, verb: str) -> str:
@@ -270,15 +533,24 @@ def radiod_template_installed() -> bool:
 ### ---------------------------------------------------------------------
 ### Preflight -- runs in the normal terminal, before Textual takes over
 ### the screen, since a sudo password prompt needs ordinary tty control.
+### Nothing here is fatal any more: browsing Source, editing, and writing
+### to Destination (/tmp) all work with no privilege and no radiod
+### installation at all. These are just best-effort warnings so the
+### operator isn't surprised when 's'/'t' fail later.
 ### ---------------------------------------------------------------------
 
 def preflight() -> None:
     if not shutil.which("radiod"):
-        sys.exit("ERROR: radiod is not installed or is not in PATH")
-
-    if not radiod_template_installed():
-        sys.exit(
-            "ERROR: radiod@.service systemd template not found -- is ka9q-radio installed?"
+        print(
+            "WARNING: radiod is not installed or not in PATH -- Source/Destination "
+            "browsing and editing still work, but Enable/Disable/Start/Stop will fail.",
+            file=sys.stderr,
+        )
+    elif not radiod_template_installed():
+        print(
+            "WARNING: radiod@.service systemd template not found -- "
+            "Enable/Disable/Start/Stop will fail.",
+            file=sys.stderr,
         )
 
     cached = subprocess.run(["sudo", "-n", "true"], capture_output=True, check=False)
@@ -287,7 +559,11 @@ def preflight() -> None:
         # cached credential is not present.
         prompted = subprocess.run(["sudo", "true"], check=False)
         if prompted.returncode != 0:
-            sys.exit("ERROR: sudo privileges are required")
+            print(
+                "WARNING: no sudo privileges -- Source/Destination browsing, editing "
+                "and Write to /tmp still work, but Enable/Disable/Start/Stop will fail.",
+                file=sys.stderr,
+            )
 
 
 ### ---------------------------------------------------------------------
@@ -295,7 +571,7 @@ def preflight() -> None:
 ### ---------------------------------------------------------------------
 
 DIALOG_CSS = """
-ConfirmScreen, FormScreen {
+ConfirmScreen, FormScreen, SourceDirScreen {
     align: center middle;
 }
 #confirm-dialog, #form-dialog {
@@ -385,6 +661,135 @@ class FormScreen(ModalScreen[dict[str, str] | None]):
         self.dismiss(result)
 
 
+class SourceDirScreen(ModalScreen["str | None"]):
+    """'o': pick a new Source directory -- a one-click preset or a custom path."""
+
+    CSS = DIALOG_CSS
+
+    def __init__(self, current: Path) -> None:
+        super().__init__()
+        self.current = current
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="form-dialog"):
+            yield Static("Change source directory (read-only browse)", id="form-title", markup=False)
+            yield Static(f"Currently: {self.current}", id="form-hint", markup=False)
+            for i, d in enumerate(KNOWN_SOURCE_DIRS):
+                yield Button(str(d), id=f"preset-{i}")
+            yield Label("Or a custom path")
+            yield Input(value=str(self.current), id="field-path")
+            with Horizontal():
+                yield Button("OK", id="ok", variant="primary")
+                yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        self.query_one("#field-path", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip())
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id == "ok":
+            self.dismiss(self.query_one("#field-path", Input).value.strip())
+        elif button_id == "cancel":
+            self.dismiss(None)
+        elif button_id.startswith("preset-"):
+            self.dismiss(str(KNOWN_SOURCE_DIRS[int(button_id.split("-", 1)[1])]))
+
+
+class AdvancedPickScreen(ModalScreen["dict[str, str] | None"]):
+    """Step 1 of 'v': pick one setting from the given catalog.
+
+    The catalog is chosen by _advanced_catalog_for based on the section
+    the cursor was on -- see action_advanced.
+    """
+
+    CSS = DIALOG_CSS + """
+    #advanced-dialog {
+        width: 96;
+        height: auto;
+        max-height: 80%;
+        border: thick $accent;
+        background: $panel;
+        padding: 1 2;
+    }
+    #advanced-list {
+        height: auto;
+        max-height: 20;
+        margin-bottom: 1;
+    }
+    """
+
+    def __init__(self, section: str, catalog: list[dict[str, str]], label: str) -> None:
+        super().__init__()
+        self.section = section
+        self.catalog = catalog
+        self.label = label
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="advanced-dialog"):
+            yield Static(
+                f"Advanced settings for [{self.section}]  ({self.label}) -- pick one (Esc/Cancel to abort)",
+                markup=False,
+            )
+            options = [
+                Option(f"{s['key']:<16} default={s['default'] or '(blank)':<9} {s['desc']}", id=s["key"])
+                for s in self.catalog
+            ]
+            yield OptionList(*options, id="advanced-list")
+            yield Button("Cancel", id="cancel")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        setting = next(s for s in self.catalog if s["key"] == event.option_id)
+        self.dismiss(setting)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+
+class AdvancedApplyScreen(ModalScreen["tuple[str, str] | None"]):
+    """Step 2 of 'v': edit the default value, then add it active or as a note.
+
+    Dismisses with (mode, value) where mode is "active" or "note", or None
+    if cancelled.
+    """
+
+    CSS = DIALOG_CSS
+
+    def __init__(self, setting: dict[str, str], section: str) -> None:
+        super().__init__()
+        self.setting = setting
+        self.section = section
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="form-dialog"):
+            yield Static(f"{self.setting['key']}  ->  [{self.section}]", id="form-title", markup=False)
+            yield Static(self.setting["desc"], id="form-hint", markup=False)
+            yield Label("Value")
+            yield Input(value=self.setting["default"], id="field-value")
+            with Horizontal():
+                yield Button("Add to conf", id="active", variant="primary")
+                yield Button("Add as note", id="note")
+                yield Button("Cancel", id="cancel")
+
+    def on_mount(self) -> None:
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self._submit("active")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id in ("active", "note"):
+            self._submit(event.button.id)
+        else:
+            self.dismiss(None)
+
+    def _submit(self, mode: str) -> None:
+        value = self.query_one("#field-value", Input).value
+        self.dismiss((mode, value))
+
+
 ### ---------------------------------------------------------------------
 ### Main application
 ### ---------------------------------------------------------------------
@@ -402,31 +807,42 @@ class Ka9qRadioTUI(App[None]):
     #body {
         height: 1fr;
     }
-    #missions {
+    #left {
         width: 40%;
+    }
+    #source {
+        height: 1fr;
+        border: round $primary;
+    }
+    #dest {
+        height: 1fr;
         border: round $primary;
     }
     #editor {
         width: 1fr;
+        height: 1fr;
         border: round $primary;
     }
     #tree {
         height: 1fr;
     }
     #log {
-        height: 12;
+        height: 4;
         border: round $primary-darken-1;
+        overflow-y: scroll;
     }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("n", "new_mission", "New mission"),
-        Binding("d", "delete_mission", "Delete mission"),
+        Binding("o", "change_source", "Source dir"),
+        Binding("n", "new_mission", "New (dest)"),
+        Binding("d", "delete_mission", "Delete (dest)"),
         Binding("a", "add", "Add"),
         Binding("c", "change", "Change"),
         Binding("x", "delete_node", "Delete key/section"),
-        Binding("w", "save", "Write"),
+        Binding("v", "advanced", "Advanced"),
+        Binding("w", "save", "Write to /tmp"),
         Binding("s", "toggle_enable", "Enable/disable"),
         Binding("t", "toggle_active", "Start/stop"),
         Binding("r", "refresh_status", "Refresh"),
@@ -434,27 +850,71 @@ class Ka9qRadioTUI(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
+        # Both panes are little file browsers: the operator can descend into
+        # subdirectories (Enter on a "name/" row) and back up (Enter on
+        # "..") in addition to Source's 'o' jump-to-preset/custom-path
+        # dialog. Both are unconfined -- self.source_dir/self.dest_dir can
+        # end up anywhere; DEST_DIR is only Destination's starting point.
+        # Config file writes are never privileged (only 's'/'t' use sudo,
+        # for systemctl -- see the "systemd helpers" comment below), so a
+        # Destination write/delete outside /tmp just succeeds or fails on
+        # the invoking user's own filesystem permissions, same as any other
+        # write to that path would.
+        self.source_dir: Path = DEFAULT_SOURCE_DIR
+        self.dest_dir: Path = DEST_DIR
+        # What's currently loaded in the editor pane, and where it came from
+        # ("source" or "dest") -- origin is display-only, since 'w' Write
+        # always targets wherever Destination is currently browsing.
         self.current_instance: str | None = None
         self.current_config: RadiodConfig | None = None
+        self.editor_origin: str | None = None
+        # Last-highlighted *file* row in each list pane (never a directory
+        # row), tracked independently of the editor above so browsing
+        # Source doesn't lose your place in Destination (which
+        # 'n'/'d'/'s'/'t' always act on) and vice versa.
+        self.current_source_instance: str | None = None
+        self.current_dest_instance: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="body"):
-            yield DataTable(id="missions", cursor_type="row")
+            with Vertical(id="left"):
+                yield DataTable(id="source", cursor_type="row")
+                yield DataTable(id="dest", cursor_type="row")
             with Vertical(id="editor"):
-                yield Tree("(no missions)", id="tree")
+                yield Tree("(nothing loaded)", id="tree")
         yield RichLog(id="log", markup=True, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one("#missions", DataTable)
-        table.add_column("Instance", key="instance")
-        table.add_column("Enabled", key="enabled")
-        table.add_column("Active", key="active")
-        table.border_title = "Missions  (n=new, d=delete)"
-        self.query_one("#editor", Vertical).border_title = "Config  (Tab to switch panes)"
-        self.reload_mission_list()
-        table.focus()
+        source_table = self.query_one("#source", DataTable)
+        source_table.add_column("Name", key="name")
+        self._update_source_border_title()
+
+        dest_table = self.query_one("#dest", DataTable)
+        dest_table.add_column("Name", key="name")
+        dest_table.add_column("Enabled", key="enabled")
+        dest_table.add_column("Active", key="active")
+        self._update_dest_border_title()
+
+        self.query_one("#editor", Vertical).border_title = (
+            "Config editor  a=add  c=change  x=delete  v=advanced  w=Write to /tmp"
+        )
+
+        self.reload_source_list()
+        self.reload_dest_list()
+        source_table.focus()
+
+    def _update_source_border_title(self) -> None:
+        self.query_one("#source", DataTable).border_title = (
+            f"Source (read-only) -- {self.source_dir}   ('o' to jump, Enter on a dir/'..' to browse)"
+        )
+
+    def _update_dest_border_title(self) -> None:
+        self.query_one("#dest", DataTable).border_title = (
+            f"Destination (writable) -- {self.dest_dir}   "
+            f"n=new  x=delete  s=enable/disable  t=start/stop"
+        )
 
     ### -- logging ---------------------------------------------------
     #
@@ -477,38 +937,129 @@ class Ka9qRadioTUI(App[None]):
         color = "green" if ok else "red"
         self.log_write(f"[{color}]{mkup_escape(text)}[/{color}]")
 
-    ### -- mission list -------------------------------------------------
+    ### -- Source / Destination lists ------------------------------------
+    #
+    # Both tables list, in order: an ".." row (if there's somewhere to go
+    # up to) keyed "up", subdirectory rows (keyed "D:<name>"), then
+    # radiod@*.conf file rows (keyed by the bare instance name, as before).
+    # Only the file rows are ever handed to RadiodConfig.load -- Enter on a
+    # directory/".." row navigates instead (see on_data_table_row_selected);
+    # merely arrowing over one (on_data_table_row_highlighted) does nothing.
 
-    def reload_mission_list(self, select: str | None = None) -> None:
-        table = self.query_one("#missions", DataTable)
+    def reload_source_list(self, select: str | None = None) -> None:
+        table = self.query_one("#source", DataTable)
         table.clear()
-        instances = discover_missions()
-        for inst in instances:
-            unit = unit_name(inst)
-            table.add_row(
-                inst,
-                systemctl_query(unit, "is-enabled"),
-                systemctl_query(unit, "is-active"),
-                key=inst,
-            )
-        if instances:
-            target = select if select in instances else instances[0]
-            table.move_cursor(row=instances.index(target))
-            self.load_mission(target)
+        dirs, confs = list_dir_entries(self.source_dir)
+        can_go_up = self.source_dir.parent != self.source_dir
+        if can_go_up:
+            table.add_row("..", key="up")
+        for d in dirs:
+            table.add_row(f"{d}/", key=f"D:{d}")
+        for inst in confs:
+            table.add_row(inst, key=inst)
+
+        preferred = select or self.current_source_instance
+        if confs:
+            target = preferred if preferred in confs else confs[0]
+            table.move_cursor(row=int(can_go_up) + len(dirs) + confs.index(target))
+            self.current_source_instance = target
+            self.load_from_source(target)
         else:
-            self.current_instance = None
-            self.current_config = None
-            self.rebuild_tree()
+            self.current_source_instance = None
+            if not dirs and not can_go_up:
+                self.log_info(f"No radiod@*.conf files or subdirectories in {self.source_dir}")
+            if self.editor_origin == "source":
+                self.current_instance = None
+                self.current_config = None
+                self.editor_origin = None
+                self.rebuild_tree()
+
+    def reload_dest_list(self, select: str | None = None) -> None:
+        table = self.query_one("#dest", DataTable)
+        table.clear()
+        dirs, confs = list_dir_entries(self.dest_dir)
+        can_go_up = self.dest_dir.parent != self.dest_dir
+        if can_go_up:
+            table.add_row("..", "", "", key="up")
+        for d in dirs:
+            table.add_row(f"{d}/", "", "", key=f"D:{d}")
+        for inst in confs:
+            unit = unit_name(inst)
+            table.add_row(inst, systemctl_query(unit, "is-enabled"), systemctl_query(unit, "is-active"), key=inst)
+
+        preferred = select or self.current_dest_instance
+        if confs:
+            target = preferred if preferred in confs else confs[0]
+            table.move_cursor(row=int(can_go_up) + len(dirs) + confs.index(target))
+            self.current_dest_instance = target
+            self.load_from_dest(target)
+        else:
+            self.current_dest_instance = None
+            if self.editor_origin == "dest":
+                self.current_instance = None
+                self.current_config = None
+                self.editor_origin = None
+                self.rebuild_tree()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if event.row_key.value is not None:
-            self.load_mission(str(event.row_key.value))
+        if event.row_key.value is None:
+            return
+        key = str(event.row_key.value)
+        if key == "up" or key.startswith("D:"):
+            return  # directories only act on Enter (RowSelected), not mere highlight
+        if event.data_table.id == "source":
+            self.current_source_instance = key
+            self.load_from_source(key)
+        elif event.data_table.id == "dest":
+            self.current_dest_instance = key
+            self.load_from_dest(key)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.row_key.value is None:
+            return
+        key = str(event.row_key.value)
+        if event.data_table.id == "source":
+            if key == "up":
+                self._set_source_dir(self.source_dir.parent)
+            elif key.startswith("D:"):
+                self._set_source_dir(self.source_dir / key[2:])
+        elif event.data_table.id == "dest":
+            if key == "up":
+                self._set_dest_dir(self.dest_dir.parent)
+            elif key.startswith("D:"):
+                self._set_dest_dir(self.dest_dir / key[2:])
+
+    def _set_source_dir(self, new_dir: Path) -> None:
+        self.source_dir = new_dir
+        self.current_source_instance = None
+        self._update_source_border_title()
+        self.reload_source_list()
+
+    def _set_dest_dir(self, new_dir: Path) -> None:
+        self.dest_dir = new_dir
+        self.current_dest_instance = None
+        self._update_dest_border_title()
+        self.reload_dest_list()
 
     def action_refresh_status(self) -> None:
-        self.reload_mission_list(select=self.current_instance)
-        self.log_info("Status refreshed.")
+        self.reload_source_list()
+        self.reload_dest_list()
+        self.log_info("Refreshed.")
 
-    ### -- new / delete mission -----------------------------------------
+    def action_change_source(self) -> None:
+        def check(raw: str | None) -> None:
+            if not raw:
+                return
+            new_dir = Path(raw).expanduser()
+            if not new_dir.is_dir():
+                self.log_error(f"Not a directory: {new_dir}")
+                return
+            self._set_source_dir(new_dir)
+            self.log_status(True, f"Source dir set to {self.source_dir}")
+
+        self.push_screen(SourceDirScreen(self.source_dir), check)
+
+    ### -- new / delete (Destination only) -------------------------------
 
     def action_new_mission(self) -> None:
         def check(result: dict[str, str] | None) -> None:
@@ -518,67 +1069,57 @@ class Ka9qRadioTUI(App[None]):
             if not valid_name(name):
                 self.log_error(f"Invalid mission name '{name}'")
                 return
-            if name in discover_missions():
-                self.log_error(f"Mission '{name}' already exists")
+            path = dest_path(self.dest_dir, name)
+            if path.exists():
+                self.log_error(f"{path} already exists -- delete it first ('x' in Destination) or pick another name")
                 return
-            try:
-                sudo_write(conf_path(name), RadiodConfig.blank(name).to_text())
-                daemon_reload()
-            except SudoError as exc:
-                self.log_error(str(exc))
-                return
-            self.log_status(True, f"Created {conf_path(name)}")
-            self.reload_mission_list(select=name)
+            path.write_text(RadiodConfig.blank(name).to_text())
+            self.log_status(True, f"Created {path}")
+            self.reload_dest_list(select=name)
 
         self.push_screen(
             FormScreen(
-                "New mission",
+                "New mission (Destination)",
                 [("name", "Instance name (e.g. rx888-10m, hackrf-aprs)", "")],
-                hint="Creates a minimal [global] skeleton; add sections/keys with 'a'.",
+                hint=f"Creates a minimal [global] skeleton straight in {self.dest_dir}; add sections/keys with 'a'.",
             ),
             check,
         )
 
     def action_delete_mission(self) -> None:
-        if self.current_instance is None:
-            self.log_error("No mission selected")
+        if self.current_dest_instance is None:
+            self.log_error("No Destination mission selected")
             return
-        instance = self.current_instance
-        unit = unit_name(instance)
-        enabled = systemctl_query(unit, "is-enabled") == "enabled"
-        active = systemctl_query(unit, "is-active") == "active"
-        warn = ""
-        if enabled or active:
-            warn = "\nIt will be stopped and disabled first."
+        instance = self.current_dest_instance
+        path = dest_path(self.dest_dir, instance)
 
         def check(confirmed: bool | None) -> None:
             if not confirmed:
                 return
             try:
-                if active:
-                    require_sudo_ok(run_sudo(["systemctl", "stop", unit]), f"stop {unit}")
-                if enabled:
-                    require_sudo_ok(run_sudo(["systemctl", "disable", unit]), f"disable {unit}")
-                backup = sudo_soft_delete(conf_path(instance))
-            except SudoError as exc:
-                self.log_error(str(exc))
+                path.unlink()
+            except OSError as exc:
+                self.log_error(f"Failed to delete {path}: {exc}")
                 return
-            self.log_status(True, f"Deleted {instance} (moved to {backup})")
-            self.reload_mission_list()
+            self.log_status(True, f"Deleted {path}")
+            self.reload_dest_list()
 
         self.push_screen(
-            ConfirmScreen(
-                f"Delete mission '{instance}'?\nConfig is moved aside, not erased.{warn}",
-                danger=True,
-            ),
+            ConfirmScreen(f"Delete {path}?"),
             check,
         )
 
-    ### -- form population -----------------------------------------------
+    ### -- editor population ----------------------------------------------
 
-    def load_mission(self, instance: str) -> None:
+    def load_from_source(self, instance: str) -> None:
+        self._load(instance, source_path(self.source_dir, instance), "source")
+
+    def load_from_dest(self, instance: str) -> None:
+        self._load(instance, dest_path(self.dest_dir, instance), "dest")
+
+    def _load(self, instance: str, path: Path, origin: str) -> None:
         self.current_instance = instance
-        path = conf_path(instance)
+        self.editor_origin = origin
         try:
             self.current_config = RadiodConfig.load(path)
         except (OSError, configparser.Error) as exc:
@@ -593,12 +1134,14 @@ class Ka9qRadioTUI(App[None]):
         # (invalid, unclosed) console markup tag and silently drops it.
         tree = self.query_one("#tree", Tree)
         if self.current_instance is None or self.current_config is None:
-            tree.reset(Text("(no missions -- press 'n' to create one)"))
+            tree.reset(Text("(nothing loaded -- highlight a conf file in Source or Destination)"))
             return
 
-        unit = unit_name(self.current_instance)
-        status = f"enabled={systemctl_query(unit,'is-enabled')} active={systemctl_query(unit,'is-active')}"
-        tree.reset(Text(f"{self.current_instance}  ({status})"), data={"type": "mission"})
+        origin_label = {
+            "source": f"from source: {self.source_dir}",
+            "dest": "from destination: /tmp",
+        }.get(self.editor_origin, "")
+        tree.reset(Text(f"{self.current_instance}  ({origin_label})"), data={"type": "mission"})
         for section, kv in self.current_config.sections.items():
             snode = tree.root.add(
                 Text(f"[{section}]"), data={"type": "section", "section": section}, expand=True,
@@ -614,9 +1157,12 @@ class Ka9qRadioTUI(App[None]):
     def _cursor_node(self) -> TreeNode | None:
         return self.query_one("#tree", Tree).cursor_node
 
+    def _unsaved_hint(self) -> str:
+        return f"unsaved -- 'w' writes {dest_path(self.dest_dir, self.current_instance)}"
+
     def action_add(self) -> None:
         if self.current_config is None:
-            self.log_error("No mission selected")
+            self.log_error("Nothing loaded")
             return
         node = self._cursor_node()
         node_type = (node.data or {}).get("type") if node else "mission"
@@ -641,14 +1187,14 @@ class Ka9qRadioTUI(App[None]):
                 return
             self.current_config.sections[name] = OrderedDict()
             self.rebuild_tree()
-            self.log_info(f"Added section [{name}] (unsaved -- press 'w' to write)")
+            self.log_info(f"Added section [{name}] ({self._unsaved_hint()})")
 
         self.push_screen(FormScreen("Add section", [("name", "Section name", "")]), check)
 
     def _prompt_add_key(self, section: str) -> None:
         hint = ""
         if section == "global":
-            hint = "e.g. iface, ttl, mode, status, data"
+            hint = "e.g. iface, ttl, mode, status, data  ('v' for the full advanced catalog)"
 
         def check(result: dict[str, str] | None) -> None:
             if not result:
@@ -660,7 +1206,7 @@ class Ka9qRadioTUI(App[None]):
                 return
             self.current_config.sections[section][key] = value
             self.rebuild_tree()
-            self.log_info(f"Set {section}.{key} = {value} (unsaved -- press 'w' to write)")
+            self.log_info(f"Set {section}.{key} = {value} ({self._unsaved_hint()})")
 
         self.push_screen(
             FormScreen(
@@ -687,7 +1233,7 @@ class Ka9qRadioTUI(App[None]):
                 return
             self.current_config.sections[section][key] = result["value"]
             self.rebuild_tree()
-            self.log_info(f"Set {section}.{key} = {result['value']} (unsaved -- press 'w' to write)")
+            self.log_info(f"Set {section}.{key} = {result['value']} ({self._unsaved_hint()})")
 
         self.push_screen(
             FormScreen(f"Change {section}.{key}", [("value", "Value", current_value)]),
@@ -707,7 +1253,7 @@ class Ka9qRadioTUI(App[None]):
                 if confirmed:
                     del self.current_config.sections[data["section"]][data["key"]]
                     self.rebuild_tree()
-                    self.log_info(f"Deleted {data['section']}.{data['key']} (unsaved -- press 'w' to write)")
+                    self.log_info(f"Deleted {data['section']}.{data['key']} ({self._unsaved_hint()})")
 
             self.push_screen(
                 ConfirmScreen(f"Delete key '{data['key']}' from [{data['section']}]?", danger=True), check,
@@ -719,7 +1265,7 @@ class Ka9qRadioTUI(App[None]):
                 if confirmed:
                     del self.current_config.sections[data["section"]]
                     self.rebuild_tree()
-                    self.log_info(f"Deleted section [{data['section']}] (unsaved -- press 'w' to write)")
+                    self.log_info(f"Deleted section [{data['section']}] ({self._unsaved_hint()})")
 
             self.push_screen(
                 ConfirmScreen(
@@ -728,48 +1274,138 @@ class Ka9qRadioTUI(App[None]):
                 check,
             )
         else:
-            self.log_info("Use 'd' on the mission list to delete a whole mission.")
+            self.log_info("Move the cursor onto a key or section to delete it with 'x'. "
+                           "'d' deletes a whole Destination (/tmp) mission instead.")
+
+    ### -- advanced settings ('v') -----------------------------------------
+    #
+    # A curated picklist over one of the ADVANCED_SETTINGS catalogs,
+    # offered against whatever section the cursor is on, applied straight
+    # to the in-memory editor buffer -- exactly like 'a'/'c' -- since 'w'
+    # Write already only ever reaches /tmp. See _advanced_catalog_for for
+    # how the catalog is chosen.
+
+    def action_advanced(self) -> None:
+        if self.current_instance is None or self.current_config is None:
+            self.log_error("Nothing loaded")
+            return
+        node = self._cursor_node()
+        node_type = (node.data or {}).get("type") if node else None
+        if node_type in ("section", "key"):
+            section = node.data["section"]
+        else:
+            self.log_error("Move the cursor onto a section (or one of its keys), then press 'v'")
+            return
+        catalog, label = self._advanced_catalog_for(section)
+
+        def pick_setting(setting: dict[str, str] | None) -> None:
+            if setting is None:
+                return
+
+            def apply_value(result: tuple[str, str] | None) -> None:
+                if result is None:
+                    return
+                mode, value = result
+                self._apply_advanced_setting(section, setting, mode, value)
+
+            self.push_screen(AdvancedApplyScreen(setting, section), apply_value)
+
+        self.push_screen(AdvancedPickScreen(section, catalog, label), pick_setting)
+
+    def _advanced_catalog_for(self, section: str) -> tuple[list[dict[str, str]], str]:
+        """Classify a section as global / hardware / channel and return its
+        (catalog, human label). Hardware is detected by matching the
+        section name against [global]'s "hardware =" value -- that's the
+        only thing that actually distinguishes a front-end section from a
+        channel/preset section in radiod's own config format (see
+        docs/ka9q-radio-2.md)."""
+        if section == "global":
+            return GLOBAL_ADVANCED_SETTINGS, "global"
+        hardware_section = self.current_config.sections.get("global", {}).get("hardware", "")
+        if section == hardware_section:
+            device = self.current_config.sections.get(section, {}).get("device", section).strip().lower()
+            catalog = HARDWARE_ADVANCED_SETTINGS.get(device)
+            if catalog is not None:
+                return catalog, f"hardware: {device}"
+            return HARDWARE_GENERIC_SETTINGS, f"hardware: {device or 'unrecognized type'} (generic keys only)"
+        return CHANNEL_ADVANCED_SETTINGS, "channel/preset"
+
+    def _apply_advanced_setting(
+        self, section: str, setting: dict[str, str], mode: str, value: str,
+    ) -> None:
+        kv = self.current_config.sections.setdefault(section, OrderedDict())
+        key = setting["key"]
+        # Drop whichever form (active/note) may already be there so
+        # switching modes on the same key doesn't leave both behind.
+        kv.pop(key, None)
+        kv.pop(f"# {key}", None)
+        if mode == "note":
+            kv[f"# {key}"] = f"{value}  # advanced default -- remove leading '#' to enable"
+        else:
+            kv[key] = value
+        self.rebuild_tree()
+        verb = "Noted" if mode == "note" else "Set"
+        self.log_status(True, f"{verb} {section}.{key} = {value} ({self._unsaved_hint()})")
 
     ### -- save / systemd actions -----------------------------------------
 
     def action_save(self) -> None:
         if self.current_instance is None or self.current_config is None:
-            self.log_error("No mission selected")
+            self.log_error("Nothing loaded to write")
             return
-        path = conf_path(self.current_instance)
+        instance = self.current_instance
+        path = dest_path(self.dest_dir, instance)
         preview = self.current_config.to_text()
+        note = "" if self.editor_origin == "dest" else (
+            f"\n(source untouched: {source_path(self.source_dir, instance)})"
+        )
 
         def check(confirmed: bool | None) -> None:
             if not confirmed:
                 return
             try:
-                backup = sudo_backup(path)
-                sudo_write(path, preview)
-                daemon_reload()
-            except SudoError as exc:
-                self.log_error(str(exc))
+                path.write_text(preview)
+            except OSError as exc:
+                self.log_error(f"Failed to write {path}: {exc}")
                 return
-            if backup:
-                self.log_info(f"Backed up: {backup}")
             self.log_status(True, f"Wrote {path}")
-            self.reload_mission_list(select=self.current_instance)
+            self.editor_origin = "dest"
+            self.reload_dest_list(select=instance)
 
-        summary = f"Write {path}?\n\n{preview}"
+        summary = f"Write {path}?{note}\n\n{preview}"
         self.push_screen(ConfirmScreen(summary), check)
 
+    def _live_config_note(self, instance: str) -> None:
+        # radiod always reads LIVE_CONFIG_DIR/radiod@<instance>.conf,
+        # regardless of what's selected in Source or Destination -- so
+        # enabling/starting a name with no live config there will fail.
+        # This is informational only; it never blocks the action.
+        live = LIVE_CONFIG_DIR / conf_filename(instance)
+        if not live.exists():
+            self.log_info(
+                f"Note: radiod reads {live} (not /tmp) -- that file doesn't exist yet, "
+                f"so start/enable will likely fail until you copy your /tmp draft there."
+            )
+
     def action_toggle_enable(self) -> None:
-        if self.current_instance is None:
+        if self.current_dest_instance is None:
+            self.log_error("No Destination (/tmp) mission selected")
             return
-        ok, message = systemctl_toggle_enable(unit_name(self.current_instance))
+        instance = self.current_dest_instance
+        self._live_config_note(instance)
+        ok, message = systemctl_toggle_enable(unit_name(instance))
         self.log_status(ok, message)
-        self.reload_mission_list(select=self.current_instance)
+        self.reload_dest_list(select=instance)
 
     def action_toggle_active(self) -> None:
-        if self.current_instance is None:
+        if self.current_dest_instance is None:
+            self.log_error("No Destination (/tmp) mission selected")
             return
-        ok, message = systemctl_toggle_active(unit_name(self.current_instance))
+        instance = self.current_dest_instance
+        self._live_config_note(instance)
+        ok, message = systemctl_toggle_active(unit_name(instance))
         self.log_status(ok, message)
-        self.reload_mission_list(select=self.current_instance)
+        self.reload_dest_list(select=instance)
 
 
 ### ---------------------------------------------------------------------
