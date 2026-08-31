@@ -91,3 +91,15 @@ deemph-tc = 0
 threshold-extend = no
 ```
 
+## A note on changing channels
+**Port Allocation Collisions**
+Because the static convention relies on explicit port mappings (`:5006` for APRS, `:5008` for Packet, `:5010` for Simplex) to separate streams sharing the same host IP, injecting a dynamic channel via the control channel that tries to use or default to those same ports will cause socket binding failures or UDP stream collisions.
+
+**Runtime vs. Configuration Drift**
+Changes made via the `ka9q-radio` control command or in-band control channel exist exclusively in the active memory of the running `radiod` daemon. They do not update `/etc/radio/radiod@.conf` or `/etc/hosts`. Executing a service restart (`systemctl restart radiod@...`) will wipe out all dynamic channels, reverting the server strictly to your static file layout.
+
+**IP Resolution Isolation Limits**
+Because `/etc/hosts` maps node names to a single static IP or loopback address, stream separation relies entirely on unique port suffixes. Any dynamic channel spawned via control must use an unallocated port outside your reserved static block (utilizing designated `5010–5100` expansion range) to prevent overwriting active feeds.
+
+**SSRC and Frequency Overlap**
+Dynamic channel tools typically instantiate streams using an SSRC derived from the channel's frequency in Hertz. If a dynamic channel is spun up on a frequency already governed by static configuration, it can result in duplicate or conflicting RTP streams fighting for the same destination socket buffer.
