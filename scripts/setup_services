@@ -39,17 +39,6 @@ fi
 # checkout has none yet, so build and install from source in that case.
 
 if grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
-    # Check if ka9q-hosts exists
-
-    if [ ! -f "$SIGEDGE_ETC/ka9q-hosts" ]; then
-        echo "Error: ka9q-hosts file not found." >&2
-        exit 1
-    fi
-
-    # Expand the environment variable and append safely to /etc/hosts
-    envsubst '$SIGEDGE_IPADDR' < "$SIGEDGE_ETC/ka9q-hosts" | sudo tee -a /etc/hosts > /dev/null
-    echo "Successfully appended entries from ka9q-hosts to /etc/hosts."
-
     KA9Q_DEB_DIR="$SIGEDGE_DEBS/ka9q-radio"
 
     if [[ -d "$KA9Q_DEB_DIR" ]] && compgen -G "$KA9Q_DEB_DIR/*.deb" >/dev/null; then
