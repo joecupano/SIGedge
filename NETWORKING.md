@@ -1,105 +1,103 @@
 # Networking Setup
 
 ## Intro
-By default, ka9q-radio uses mDNS (Avahi) and dynamic IP multicast hashing (turning names like vhf.local automatically into 239.x.x.x addresses). However, if you want to force explicit static IP destinations/sources and a structured naming scheme for multi-node setups or managed local subnets, you can override this behavior using the dns = yes parameter along with explicit host/IP/port  mapping.  
+By default, ka9q-radio uses mDNS (Avahi) and dynamic IP multicast hashing (turning names like vhf.local automatically into 239.x.x.x addresses). However, if you want to force explicit static IP destinations/sources and a structured scheme for multi-node setups or managed local subnets, you can override this behavior.
 
-## Naming Scheme Convention
-Design a clean, hierarchical naming and port convention for your station nodes, hardware front-ends, and virtual channels.
+## Deployment Structure
 
-- Nodes: <rig> (e.g., hackrf.local)
-- Status/Control Stream: <rig>.local:5004 (e.g., hackrf.local:5004)
-- Data Streams: <rig>.local:<port 5010-5100> (e.g., hackrf.local:5010, hackrf.local:5012 ...)
-
-## Fixing Static IPs in /etc/hosts for Clean Names
-If you prefer using readable hostnames over raw IP numbers while maintaining strict static routing, map them manually in the Linux system resolver table on every machine handling streams (/etc/hosts):
-
-If running on upstream services on the same host as SIGedge then use the loopback interface:
 ```
-# Single-server ka9q-radio loopback routing
-127.0.0.1   localhost
-127.0.0.1   rx888.local
-127.0.0.1   hackrf.local
-127.0.0.1   rtlsdr.local
+SITE
+    EDGE NODE
+        RECEIVER
+            CHANNEL
+
+MTNVILLE
+    sigedge
+        rx888
+            ch-01
+            ch-02 ...
+
 ```
 
-else the server's IP address:
+## Multicast schema
+
 ```
-# /etc/hosts mapping for ka9q-radio static cluster
-127.0.0.1   localhost
-192.168.73.100   rx888.local
-192.168.73.100   hackrf.local
-192.168.73.100   rtlsdr.local
+239.192.0.0/24    SIGedge platform
+
+239.192.1.0/24    SIGedge platform status/control
+239.192.2.0/24    Second SIGedge platform status/control
+
+239.192.32.0/24   IQ Channels
+239.192.64.0/24   Audio Channels
+239.192.96.0/24   Spectrum/Telemetry
 ```
 
-When dns = yes is set in your config files, ka9q-radio will query the system resolver or local hosts file instead of generating dynamic local multicast groups, locking your data streams to those exact designated static routes.
-
-## Configuring radiod@.conf for static names and IP addresses
-To bypass automatic multicast hashing and map streams directly to static IP addresses (or fixed local hostnames mapped in /etc/hosts), enable dns = yes and explicitly define your status and data parameters.
+## Example
 
 ```
 [global]
-hardware = myhackrf
-blocktime = 20
-overlap = 5
-fft-threads = 4
-dns = yes
-status = hackrf.local
+hardware = rx888
 
-[myhackrf]
-device = hackrf
-description = "HackRF SDR Node"
-freq = 145500000
-samprate = 8000000
-gain = 20
-amp = y
-data = hackrf.local:5004
+# Status/Control name
+status = sigedge-rx888.local
 
-[aprs]
-freq = 144390000
-mode = nfm
-description = "HackRF APRS Stream"
-samprate = 24000
-dns = yes
-data = hackrf.local:5006
+# Force multicast onto the SDR data-plane interface
+iface = eno1
 
-[packet]
-freq = 145100000
-mode = nfm
-description = "HackRF Packet Stream (145.10 MHz)"
-samprate = 24000
-dns = yes
-data = hackrf.local:5008
+#  1 - Keep multicast to local LAN, 0 - local to box
+ttl = 1
+fft-threads = 2
 
-[simplex]
-freq = 146520000
-mode = nfm
-description = "HackRF Simplex 2m Stream (146.52 MHz)"
-samprate = 24000
-dns = yes
-data = hackrf.local:5010
+[rx888]
+device = rx888
+description = "SIGedge RX888 HF"
+
+# Half-rate operation covers HF through 30 MHz and reduces host
+# load substantially compared to 129.6 MS/s.
+samprate = 64800000
+gain = 0
+
+[WWV-10-IQ]
+disable = no
+freq = "10m000000"
+mode = iq
+samprate = 16000
+encoding = float
+data = sigedge-wwv10-iq.local
+agc = 0
+gain = 0
+
+[FT8-20M]
+disable = no
+freq = "14m074000"
+mode = usb
+samprate = 12000
+encoding = float
+data = sigedge-ft8-20m.local
+
+# Pass normal FT8 audio range with some margin
+low = 100
+high = 3500
+
+agc = 0
+gain = 0
+
+[CW-30M]
+disable = no
+freq = "10m106000"
+mode = cw
+samprate = 12000
+encoding = float
+data = sigedge-cw-30m.local
+
+# Narrow CW audio passband
+low = 300
+high = 1200
+
+agc = 1
+gain = 0
+
 ```
-
-/etc/radio/modes.conf
-
-```
-[nfm]
-demod = fm
-samprate = 24000
-low = -6250
-high = +6250
-deemph-tc = 0
-threshold-extend = no
-```
-
-## A note on changing channels
-**Port Allocation Collisions**
-Because the static convention relies on explicit port mappings (`:5006` for APRS, `:5008` for Packet, `:5010` for Simplex) to separate streams sharing the same host IP, injecting a dynamic channel via the control channel that tries to use or default to those same ports will cause socket binding failures or UDP stream collisions.
-
-**Runtime vs. Configuration Drift**
-Changes made via the `ka9q-radio` control command or in-band control channel exist exclusively in the active memory of the running `radiod` daemon. They do not update `/etc/radio/radiod@.conf` or `/etc/hosts`. Executing a service restart (`systemctl restart radiod@...`) will wipe out all dynamic channels, reverting the server strictly to your static file layout.
-
-**IP Resolution Isolation Limits**
-Because `/etc/hosts` maps node names to a single static IP or loopback address, stream separation relies entirely on unique port suffixes. Any dynamic channel spawned via control must use an unallocated port outside your reserved static block (utilizing designated `5010–5100` expansion range) to prevent overwriting active feeds.
 
 **SSRC and Frequency Overlap**
 Dynamic channel tools typically instantiate streams using an SSRC derived from the channel's frequency in Hertz. If a dynamic channel is spun up on a frequency already governed by static configuration, it can result in duplicate or conflicting RTP streams fighting for the same destination socket buffer.
