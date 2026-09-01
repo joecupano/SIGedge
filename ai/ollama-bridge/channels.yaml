@@ -1,0 +1,35 @@
+# Operator-curated allowlist of channels exposed to Ollama.
+#
+# This file is the entire authorization boundary for what an LLM tool
+# call can see: list_channels() reflects exactly this file, nothing more.
+# Adding a channel here is the only way to make it visible; there is no
+# tool that lets the model discover or tune anything beyond this list.
+#
+# status_group/data_group follow the sigedge-<hardware>.local /
+# sigedge-<channel>.local convention in NETWORKING.md and match the
+# reference missions in README.md / config/radiod@<instance>.conf.
+
+channels:
+  - id: wwv-10mhz
+    label: "WWV 10 MHz time standard (AM)"
+    instance: rx888-wwv
+    status_group: sigedge-rx888.local
+    data_group: sigedge-wwv10.local
+    freq_hz: 10000000
+    mode: am
+
+  - id: aprs-144390
+    label: "APRS 144.390 MHz (FM/NBFM)"
+    instance: hackrf-aprs
+    status_group: sigedge-hackrf.local
+    data_group: sigedge-aprs.local
+    freq_hz: 144390000
+    mode: fm
+
+  - id: simplex-144650
+    label: "Amateur simplex 144.650 MHz (FM/NBFM)"
+    instance: rtlsdr-simplex
+    status_group: sigedge-rtlsdr.local
+    data_group: sigedge-simplex.local
+    freq_hz: 144650000
+    mode: fm
