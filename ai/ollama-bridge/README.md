@@ -44,7 +44,8 @@ ai/ollama-bridge/
 ├── channels.yaml              # operator-curated allowlist — "what Ollama can see"
 ├── ka9q_channels/
 │   ├── core.py                # provider-agnostic read-only functions (the reusable part)
-│   └── ollama_tools.py        # Ollama tool-schema adapter over core.py
+│   ├── ollama_tools.py        # Ollama tool-schema adapter over core.py
+│   └── mcast_listen.py        # standalone: joins radiod's status multicast, decodes TLV live
 ├── run_agent_example.py       # minimal Ollama chat + tool-call loop, for testing
 └── SKILLS.md                  # chat-facing doc: what the model can/can't do here
 ```
@@ -57,11 +58,22 @@ ai/ollama-bridge/
   multicast → PCM → whisper.cpp → timestamped text, keyed by SSRC, using
   the same per-SSRC demux `ka9q-web.c`'s `audio_thread()` already does) is
   separate follow-up work, not part of this sketch.
-- `get_channel_status()` — stub. Real version ports `status.c`'s TLV
-  `decode_*` functions and `multicast.c`'s `listen_mcast()`/`join_group()`
-  to Python (or shells out to ka9q-radio's own `control`/`monitor`), to
-  read radiod's live status multicast for the channels named in
-  `channels.yaml`. Flagged with `NotImplementedError` rather than faked.
+- `get_channel_status()` — still a stub in `core.py`, but the piece it was
+  waiting on now exists standalone: `mcast_listen.py` joins radiod's
+  status multicast group(s) and decodes the live TLV stream (ported from
+  `status.c`'s `decode_*`/`dump_metadata()` and `multicast.c`'s
+  `resolve_mcast()`/`listen_mcast()`/`join_group()` — see its own
+  docstring), printing a rolling log or `-t` live table of SSRC/freq/
+  mode/level/description per channel. It's read-only, same as everything
+  else here — it never opens radiod's control socket. Not yet wired into
+  `get_channel_status()`: that needs a background listener + cache
+  (`core.py` functions are meant to be fast, synchronous calls, not ones
+  that block joining a socket), which is the next step, not this one.
+
+  ```bash
+  python3 -m ka9q_channels.mcast_listen                       # every status_group in channels.yaml
+  python3 -m ka9q_channels.mcast_listen -t sigedge-hackrf.local # live table, one group
+  ```
 
 ## Try it
 
