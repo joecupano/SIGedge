@@ -30,13 +30,11 @@ case "$1" in
 	    cd $SIGEDGE_DEBS
         sudo dpkg -r dsdcc
         sed -i /dsdcc/d $SIGEDGE_INSTALLED
-        sudo rm $DESKTOP_FILES/dsdcc.desktop
         ;;&
 
     purge )
         cd $SIGEDGE_DEBS
         sudo dpkg -P dsdcc
-        sed -i /dsdcc/d $SIGEDGE_INSTALLED
         ;;&
 
     install )
@@ -52,13 +50,6 @@ case "$1" in
 	        sudo dpkg -i dsdcc_current_arm64.deb
         fi
         cat $SIGEDGE_PKGLIST|grep "dsdcc" >> $SIGEDGE_INSTALLED
-
-	    ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        sudo cp $SIGEDGE_DESKTOP/dsdcc.desktop $DESKTOP_FILES
-        # Change Category
-	    # Add to Menu
         ;;&
 
     build )
@@ -75,12 +66,6 @@ case "$1" in
         sudo make install
         sudo ldconfig
         cat $SIGEDGE_PKGLIST|grep "dsdcc" >> $SIGEDGE_INSTALLED
-
-	    ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        # Change Category
-	    # Add to Menu
         ;;&
 
     package )
@@ -96,12 +81,6 @@ case "$1" in
         make -j4
         sudo checkinstall --install=no
         sudo mv *.deb $SIGEDGE_DEBS
-
-        ## DESKTOP
-        # Add Icon
-        # Add Desktop
-        # Change Category
-        # Add to Menu
 	    ;;&
 
     remove|purge|install|build|package )

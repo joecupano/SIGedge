@@ -31,18 +31,12 @@ source $SIGEDGE_PACKAGES/pkg_dsdcc install
 source $SIGEDGE_PACKAGES/pkg_codec2 install
 # Install SGP4
 source $SIGEDGE_PACKAGES/pkg_sgp4 install
-# Install HamLib
-source $SIGEDGE_PACKAGES/pkg_hamlib install
 # Install Direwolf (AFSK APRS)
 source $SIGEDGE_PACKAGES/pkg_direwolf install
-# Install Linpac (AX.25 Terminal
-source $SIGEDGE_PACKAGES/pkg_linpac install
 # Install ggMorse (Morse decode)
 source $SIGEDGE_PACKAGES/pkg_ggmorse install
 # Install Inmarsatc decoder
 source $SIGEDGE_PACKAGES/pkg_inmarsatc install
-# Install RNnoise (noise suppression library)
-source $SIGEDGE_PACKAGES/pkg_rnnoise install
 # Install Dump1090
 #source $SIGEDGE_PACKAGES/pkg_dump1090 install
 # Install Radiosonde (Atmospheric Telemetry)

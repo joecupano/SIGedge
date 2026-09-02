@@ -31,22 +31,12 @@ case "$1" in
 	        cd $SIGEDGE_DEBS
             sudo dpkg -r rtl_433
             sed -i /rtl_433/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_ICONS/rtl_433.png
-            sudo rm $DESKTOP_FILES/rtl_433.desktop
-            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
-            sudo rm $DESKTOP_FILES/rtl_fm.desktop
-            sudo rm $DESKTOP_FILES/rtl_test.desktop
         fi
 
         if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
 	        cd $SIGEDGE_DEBS
             sudo dpkg -r rtl_433
             sed -i /rtl_433/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_ICONS/rtl_433.png
-            sudo rm $DESKTOP_FILES/rtl_433.desktop
-            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
-            sudo rm $DESKTOP_FILES/rtl_fm.desktop
-            sudo rm $DESKTOP_FILES/rtl_test.desktop
         fi
         ;;&
 
@@ -56,22 +46,12 @@ case "$1" in
 	        cd $SIGEDGE_DEBS
             sudo dpkg -P rtl_433
             sed -i /rtl_433/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_ICONS/rtl_433.png
-            sudo rm $DESKTOP_FILES/rtl_433.desktop
-            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
-            sudo rm $DESKTOP_FILES/rtl_fm.desktop
-            sudo rm $DESKTOP_FILES/rtl_test.desktop
         fi
 
         if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
 	        cd $SIGEDGE_DEBS
             sudo dpkg -P rtl_433
             sed -i /rtl_433/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_ICONS/rtl_433.png
-            sudo rm $DESKTOP_FILES/rtl_433.desktop
-            sudo rm $DESKTOP_FILES/rtl_adsb.desktop
-            sudo rm $DESKTOP_FILES/rtl_fm.desktop
-            sudo rm $DESKTOP_FILES/rtl_test.desktop
         fi
         ;;&
 
@@ -88,16 +68,6 @@ case "$1" in
 	        sudo dpkg -i rtl_433_current_arm64.deb
         fi
         cat $SIGEDGE_PKGLIST|grep "rtl_433" >> $SIGEDGE_INSTALLED
-
-	    ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        sudo cp $SIGEDGE_DESKTOP/rtl_433.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_DESKTOP/rtl_adsb.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_DESKTOP/rtl_fm.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_DESKTOP/rtl_test.desktop $DESKTOP_FILES
-        # Change Category
-	    # Add to Menu
         ;;&
 
     build )
@@ -116,21 +86,6 @@ case "$1" in
         sudo make install
         sudo ldconfig
         cat $SIGEDGE_PKGLIST|grep "rtl_433" >> $SIGEDGE_INSTALLED
-
-	    ## DESKTOP
-	    # Add Icon
-        sudo cp $SIGEDGE_ICONS/rtl_433.png $DESKTOP_ICONS
-        # Add Desktop
-        sudo cp $SIGEDGE_HOME/desktop/rtl_433.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_HOME/desktop/rtl_adsb.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_HOME/desktop/rtl_fm.desktop $DESKTOP_FILES
-        sudo cp $SIGEDGE_HOME/desktop/rtl_test.desktop $DESKTOP_FILES
-	    # Change Category
-        # Add to Menu
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_433.desktop
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_adsb.desktop
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_fm.desktop
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/rtl_test.desktop
 	    ;;&
 
     package )

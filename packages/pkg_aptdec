@@ -29,14 +29,12 @@ case "$1" in
         cd $SIGEDGE_DEBS
         sudo dpkg -r aptdec
         sed -i /aptdec/d $SIGEDGE_INSTALLED
-        sudo rm $DESKTOP_FILES/aptdec.desktop
         ;;&
 
     purge )
         cd $SIGEDGE_DEBS
         sudo dpkg -P aptdec
         sed -i /aptdec/d $SIGEDGE_INSTALLED
-        sudo rm $DESKTOP_FILES/aptdec.desktop
         ;;&
 
     install|build|package )
@@ -59,14 +57,6 @@ case "$1" in
 	        sudo dpkg -i aptdec_current_arm64.deb
         fi
         cat $SIGEDGE_PKGLIST|grep "aptdec" >> $SIGEDGE_INSTALLED
-
-        ## DESKTOP
-	    # Add Icon
-        #sudo cp $SIGEDGE_ICONS/aptdec.icon $DESKTOP_ICONS
-        # Add Desktop
-        sudo cp $SIGEDGE_DESKTOP/aptdec.desktop $DESKTOP_FILES
-        # Change Category
-	    # Add to Menu
         ;;&
 
     build )
@@ -81,14 +71,6 @@ case "$1" in
         sudo make install
         sudo ldconfig
         cat $SIGEDGE_PKGLIST|grep "aptdec" >> $SIGEDGE_INSTALLED
-
-        ## DESKTOP
-        # Add Icon
-        # Add Desktop
-        sudo cp $SIGEDGE_HOME/desktop/aptdec.desktop $DESKTOP_FILES
-        # Change Category
-        # Add to Menu
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/aptdec.desktop
         ;;&
 
     package )
@@ -102,12 +84,6 @@ case "$1" in
         make -j4
         sudo checkinstall --install=no
         sudo mv *.deb $SIGEDGE_DEBS
-
-        ## DESKTOP
-        # Add Icon
-        # Add Desktop
-        # Change Category
-        # Add to Menu
         ;;&
 
     remove|purge|install|build|package )

@@ -31,14 +31,12 @@ case "$1" in
 	        cd $SIGEDGE_DEBS
             sudo dpkg -r multimon-ng
             sed -i /multimon-ng/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_FILES/multimon-ng.desktop
         fi
 
         if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
 	        cd $SIGEDGE_DEBS
             sudo dpkg -r multimon-ng
             sed -i /multimon-ng/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_FILES/multimon-ng.desktop
         fi
         ;;&
 
@@ -48,14 +46,12 @@ case "$1" in
 	        cd $SIGEDGE_DEBS
             sudo dpkg -P multimon-ng
             sed -i /multimon-ng/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_FILES/multimon-ng.desktop
         fi
 
         if [[ "$SIGEDGE_HWARCH" == "aarch64" ]]; then
 	        cd $SIGEDGE_DEBS
             sudo dpkg -P multimon-ng
             sed -i /multimon-ng/d $SIGEDGE_INSTALLED
-            sudo rm $DESKTOP_FILES/multimon-ng.desktop
         fi
         ;;&
 
@@ -72,13 +68,6 @@ case "$1" in
 	        sudo dpkg -i multimon-ng_current_arm64.deb
         fi
         cat $SIGEDGE_PKGLIST|grep "multimon-ng" >> $SIGEDGE_INSTALLED
-
-	    ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        sudo cp $SIGEDGE_DESKTOP/multimon-ng.desktop $DESKTOP_FILES
-        # Change Category
-	    # Add to Menu
         ;;&
 
     build )
@@ -94,14 +83,6 @@ case "$1" in
         sudo make install
         sudo ldconfig
         cat $SIGEDGE_PKGLIST|grep "multimon-ng" >> $SIGEDGE_INSTALLED
-
-        ## DESKTOP
-        # Add Icon
-        # Add Desktop
-        sudo cp $SIGEDGE_HOME/desktop/multimon-ng.desktop $DESKTOP_FILES
-        # Change Category
-        # Add to Menu
-        xdg-desktop-menu install --novendor --noupdate $DESKTOP_DIRECTORY/SIGpishell.directory $DESKTOP_FILES/multimon-ng.desktop
         ;;&
 
     package )
@@ -116,12 +97,6 @@ case "$1" in
         make -j4
         sudo checkinstall --install=no
         sudo mv *.deb $SIGEDGE_DEBS
-
-        ## DESKTOP
-	    # Add Icon
-        # Add Desktop
-        # Change Category
-	    # Add to Menu
         ;;&
 
     remove|purge|install|build|package )
