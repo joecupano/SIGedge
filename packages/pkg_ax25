@@ -24,16 +24,16 @@ case "$1" in
         echo -e "${SIGEDGE_BANNER_RESET}"
         ;;&
     remove )
-        sudo apt-get remove -y libncurses5 libax25 ax25-apps ax25-tools
+        sudo apt-get remove -y libax25 ax25-apps ax25-tools
         sed -i /ax25/d $SIGEDGE_INSTALLED
         ;;&
     purge )
-        sudo apt-get remove -y libncurses5 libax25 ax25-apps ax25-tools
+        sudo apt-get remove -y libax25 ax25-apps ax25-tools
         sudo rm -rf /etc/ax25/axports
         sed -i /ax25/d $SIGEDGE_INSTALLED
         ;;&
     install )
-        sudo apt-get install -y libncurses5 libax25 ax25-apps ax25-tools
+        sudo apt-get install -y libax25 ax25-apps ax25-tools
         echo "ax0 N0CALL-3 1200 255 7 APRS" | sudo tee -a /etc/ax25/axports
         cat $SIGEDGE_PKGLIST|grep "ax25" >> $SIGEDGE_INSTALLED
         ;;&
