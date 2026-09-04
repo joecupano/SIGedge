@@ -11,7 +11,12 @@ Various config files.
 
 **radiod@\<instance>.conf** - Proven radiod reference-mission templates, deployed as-is by
 `scripts/cfg_ka9q-radio` (`##TTL##`/`##CENTER_HZ##`/`##IFACE##`/`##SERIAL##` are the only
-placeholders it fills in per host; everything else is trusted, checked-in convention). See
-[NETWORKING.md](../NETWORKING.md) for the `sigedge-<hardware>.local` / `sigedge-<channel>.local`
-naming these files follow. `scripts/cfg_ka9q-radio_tui` is the separate, interactive tool for
-building or editing configs beyond these fixed reference missions.
+placeholders it fills in per host; everything else is trusted, checked-in convention). Each
+uses `dns = yes` for a static multicast `data` address (a literal `239.192.x.x` right in the
+template) and a static `status` address (still the `sigedge-<hardware>.local` name here --
+`scripts/cfg_ka9q-radio` pins it to a fixed address via a `/etc/hosts` entry, since a
+literal address in `status` itself doesn't work; see NETWORKING.md's "How the override
+actually works"). See [NETWORKING.md](../NETWORKING.md)'s "Current static assignment"
+table for the actual address-per-instance assignment. `scripts/cfg_ka9q-radio_tui` is the
+separate, interactive tool for building or editing configs beyond these fixed reference
+missions.

@@ -23,6 +23,18 @@
 ### building configs beyond them, belongs in the templates or in
 ### scripts/cfg_ka9q-radio_tui, not in this script.
 ###
+### It also keeps a marked block in $KA9Q_HOSTS_FILE mapping each mission's
+### sigedge-<hardware>.local status name to its static multicast address
+### from NETWORKING.md's "Current static assignment" table. The templates
+### set dns = yes, but ka9q-radio always suffixes a *literal* status address
+### with ".local" before resolving it and silently falls back to its
+### dynamic per-string hash when that fails -- so the static override for
+### status has to go through a name that already ends in ".local", resolved
+### via a real (here: /etc/hosts) lookup. data has no such mangling and is
+### a literal address directly in the template. Runs on every invocation,
+### regardless of which single mission was selected, since the block is
+### the same fixed table either way.
+###
 ### This script may be executed directly or sourced by a SIGedge parent script.
 ### It assumes ka9q-radio is already installed.
 ###
@@ -40,6 +52,8 @@
 ###   KA9Q_TTL=<ttl>                 Multicast TTL. Default: 1
 ###   KA9Q_ENABLE_SERVICES=0|1       Enable generated systemd services. Default: 0
 ###   KA9Q_START_SERVICES=0|1        Start/restart generated services. Default: 0
+###   KA9Q_HOSTS_FILE=<path>          Where to sync static status-name entries.
+###                                  Default: /etc/hosts
 ###
 ### Device-selection overrides:
 ###   RX888_SERIAL=<serial>
@@ -87,6 +101,19 @@ RX888_SERVICE="radiod@rx888-wwv"
 HACKRF_SERVICE="radiod@hackrf-aprs"
 RTLSDR_SERVICE="radiod@rtlsdr-simplex"
 
+# Static multicast assignment from NETWORKING.md's "Current static
+# assignment" table -- kept here (not in the templates) because it's the
+# same fixed table for status regardless of which single mission is being
+# deployed. See sync_static_hosts() for why status needs a hosts-file
+# entry at all when data doesn't.
+KA9Q_HOSTS_FILE="${KA9Q_HOSTS_FILE:-/etc/hosts}"
+RX888_STATUS_HOST="sigedge-rx888.local"
+HACKRF_STATUS_HOST="sigedge-hackrf.local"
+RTLSDR_STATUS_HOST="sigedge-rtlsdr.local"
+RX888_STATUS_ADDR="239.192.1.10"
+HACKRF_STATUS_ADDR="239.192.1.20"
+RTLSDR_STATUS_ADDR="239.192.1.30"
+
 
 # Only ever called once, as the very last thing the script does (see the
 # bottom of this file) -- `return` inside a function only returns from that
@@ -131,6 +158,49 @@ backup_config()
         sudo cp -a "$config" "${config}.${stamp}.bak" || return 1
         echo "Backed up: $config -> ${config}.${stamp}.bak"
     fi
+}
+
+
+# Keeps a marked block in $KA9Q_HOSTS_FILE mapping each reference mission's
+# sigedge-<hardware>.local status name to its static multicast address.
+# Idempotent: strips any previous block between the markers before writing
+# a fresh one, so re-running this doesn't pile up duplicate entries.
+#
+# Why status needs this at all when data doesn't: the templates set
+# dns = yes and give data a literal 239.192.x.x address directly, which
+# ka9q-radio resolves as-is. status can't do the same -- radiod always
+# appends ".local" to whatever's in the status field before resolving it
+# (see radio.c's ensure_suffix() call), so a literal address there gets
+# mangled into something like "239.192.1.20.local" that nothing can
+# resolve, and radiod silently falls back to its dynamic per-restart hash
+# instead -- exactly the failure mode this is meant to fix. Keeping status
+# as a name that already ends in ".local" makes ensure_suffix() a no-op,
+# and /etc/hosts (checked before mDNS per this host's nsswitch.conf, and
+# typically on any Debian/Ubuntu default) is what makes dns = yes resolve
+# that name to a fixed address instead of a live mDNS query.
+sync_static_hosts()
+{
+    local marker_begin="# BEGIN SIGedge static multicast (NETWORKING.md) -- managed by scripts/cfg_ka9q-radio, do not edit by hand"
+    local marker_end="# END SIGedge static multicast"
+
+    if [[ ! -r "$KA9Q_HOSTS_FILE" ]]; then
+        cfg_error "$KA9Q_HOSTS_FILE not found or not readable"
+        return 1
+    fi
+
+    backup_config "$KA9Q_HOSTS_FILE" || return 1
+
+    {
+        sed "/^${marker_begin//\//\\/}\$/,/^${marker_end//\//\\/}\$/d" "$KA9Q_HOSTS_FILE"
+        echo "$marker_begin"
+        printf '%s\t%s\n' \
+            "$RX888_STATUS_ADDR" "$RX888_STATUS_HOST" \
+            "$HACKRF_STATUS_ADDR" "$HACKRF_STATUS_HOST" \
+            "$RTLSDR_STATUS_ADDR" "$RTLSDR_STATUS_HOST"
+        echo "$marker_end"
+    } | sudo tee "$KA9Q_HOSTS_FILE" >/dev/null || return 1
+
+    echo "Synced static multicast status names into $KA9Q_HOSTS_FILE"
 }
 
 
@@ -280,6 +350,10 @@ cfg_main()
         cfg_error "Unable to create $KA9Q_CONFIG_DIR"
         return 1
     }
+
+
+    cfg_banner "Syncing static multicast status names into $KA9Q_HOSTS_FILE"
+    sync_static_hosts || return 1
 
 
     case "$ACTION" in

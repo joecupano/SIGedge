@@ -5,31 +5,36 @@
 # Adding a channel here is the only way to make it visible; there is no
 # tool that lets the model discover or tune anything beyond this list.
 #
-# status_group/data_group follow the sigedge-<hardware>.local /
-# sigedge-<channel>.local convention in NETWORKING.md and match the
-# reference missions in README.md / config/radiod@<instance>.conf.
+# status_group/data_group are the static 239.192.x.x addresses assigned in
+# NETWORKING.md's "Current static assignment" table and baked into
+# config/radiod@<instance>.conf (dns = on). They are NOT the
+# sigedge-<hardware>.local / sigedge-<channel>.local mDNS names those
+# instances used to hash on every radiod restart -- radiod no longer
+# registers those names with Avahi once dns = on, so resolving by name
+# would fail. resolve_group() in mcast_listen.py passes a dotted address
+# straight through (it only appends .local to a bare, dot-free name).
 
 channels:
   - id: wwv-10mhz
     label: "WWV 10 MHz time standard (AM)"
     instance: rx888-wwv
-    status_group: sigedge-rx888.local
-    data_group: sigedge-wwv10.local
+    status_group: 239.192.1.10
+    data_group: 239.192.64.10
     freq_hz: 10000000
     mode: am
 
   - id: aprs-144390
     label: "APRS 144.390 MHz (FM/NBFM)"
     instance: hackrf-aprs
-    status_group: sigedge-hackrf.local
-    data_group: sigedge-aprs.local
+    status_group: 239.192.1.20
+    data_group: 239.192.64.20
     freq_hz: 144390000
     mode: fm
 
   - id: simplex-144650
     label: "Amateur simplex 144.650 MHz (FM/NBFM)"
     instance: rtlsdr-simplex
-    status_group: sigedge-rtlsdr.local
-    data_group: sigedge-simplex.local
+    status_group: 239.192.1.30
+    data_group: 239.192.64.30
     freq_hz: 144650000
     mode: fm

@@ -71,8 +71,8 @@ ai/ollama-bridge/
   that block joining a socket), which is the next step, not this one.
 
   ```bash
-  python3 -m ka9q_channels.mcast_listen                       # every status_group in channels.yaml
-  python3 -m ka9q_channels.mcast_listen -t sigedge-hackrf.local # live table, one group
+  python3 -m ka9q_channels.mcast_listen                    # every status_group in channels.yaml
+  python3 -m ka9q_channels.mcast_listen -t 239.192.1.20    # live table, one group
   ```
 
 ## Try it

@@ -23,9 +23,16 @@ Wire format (from src/status.h, src/status.c, src/dump.c):
               the same way
 
 Usage:
-    python3 -m ka9q_channels.mcast_listen sigedge-hackrf.local
+    python3 -m ka9q_channels.mcast_listen 239.192.1.20
     python3 -m ka9q_channels.mcast_listen                  # all status_group in channels.yaml
-    python3 -m ka9q_channels.mcast_listen -i eth0 -t sigedge-rx888.local sigedge-hackrf.local
+    python3 -m ka9q_channels.mcast_listen -i 192.168.1.10 -t 239.192.1.10 239.192.1.20
+
+A bare, dot-free name (e.g. "sigedge-hackrf") still gets ".local" appended and
+resolved via mDNS/Avahi -- but that only works for a radiod instance still on
+NETWORKING.md's dynamic default (dns = off). The three reference missions in
+channels.yaml use dns = on with a static 239.192.x.x address instead (see
+NETWORKING.md's "Current static assignment" table), which resolve_group()
+below passes straight through.
 """
 from __future__ import annotations
 
@@ -150,8 +157,10 @@ def decode_status_packet(buf: bytes) -> ChannelSnapshot | None:
 
 def resolve_group(spec: str, default_port: int = DEFAULT_STAT_PORT) -> tuple[str, int, str | None]:
     """Parse 'name[:port][,iface]', append .local if unqualified, resolve via
-    the system resolver (mDNS/Avahi does the actual work, same as radiod's
-    own resolve_mcast() — see NETWORKING.md on the name -> 239.x.x.x hash)."""
+    the system resolver — same two paths as radiod's own resolve_mcast(): a
+    dotted 239.x.x.x address (NETWORKING.md's static override) resolves to
+    itself; a bare name falls through to mDNS/Avahi, which only answers for
+    an instance still on the dynamic default (dns = off)."""
     host = spec
     iface = None
     if "," in host:
@@ -214,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "groups",
         nargs="*",
-        help="status multicast group name(s), e.g. sigedge-hackrf.local "
+        help="status multicast group name(s) or static address(es), e.g. 239.192.1.20 "
         "(default: every status_group in channels.yaml)",
     )
     ap.add_argument("-i", "--iface", help="local interface address to join on (see NETWORKING.md)")

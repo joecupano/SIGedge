@@ -157,6 +157,14 @@ The current reference missions are:
 | `hackrf` | HackRF | APRS 144.390 MHz FM | `/etc/radio/radiod@hackrf-aprs.conf` | `radiod@hackrf-aprs` |
 | `rtlsdr` | RTL-SDR | Simplex 144.650 MHz FM | `/etc/radio/radiod@rtlsdr-simplex.conf` | `radiod@rtlsdr-simplex` |
 
+Each mission's `status`/`data` multicast address is a static `239.192.x.x` value (`dns =
+on`) rather than one that's re-derived from a hash on every `radiod` restart --
+`data` is a literal address checked directly into the template; `status` gets there via a
+`/etc/hosts` entry this script syncs (see [NETWORKING.md](NETWORKING.md)'s "How the
+override actually works" and "Current static assignment" table for both the mechanism and
+the actual per-instance addresses). A consumer (a gateway's `nodes.json`, a firewall rule)
+can point at these permanently.
+
 Generate one configuration without enabling or starting it:
 
 ```bash
@@ -253,14 +261,28 @@ Do not enable every reference instance unless all corresponding devices are atta
 
 ## 6. Validate discovery and multicast
 
+The reference missions use static multicast addresses (`dns = yes`, see
+[NETWORKING.md](NETWORKING.md)'s "Current static assignment" and "How the override
+actually works" sections for the mechanism and why `status`/`data` get there differently).
+Avahi advertisement isn't disabled by any of this (it's gated by `advertise`, a separate
+setting, default on) -- `avahi-browse -art` still shows these instances, and still
+resolves `sigedge-<hardware>.local`, but it should now report the *same* address on every
+restart instead of a new hash each time. Validate against the known address directly too:
+
 ```bash
 avahi-browse -art
 ip maddr show
 ip -s link show enp1s0
-sudo timeout 15 tcpdump -ni enp1s0 multicast
+sudo timeout 15 tcpdump -ni enp1s0 host 239.192.1.10 or host 239.192.64.10
+control 239.192.1.10
 ```
 
-Replace `enp1s0` with the configured interface. Use a bounded capture so validation cannot block an unattended workflow indefinitely.
+Replace `enp1s0` with the configured interface, and the addresses with the target
+instance's from NETWORKING.md. Use a bounded capture so validation cannot block an
+unattended workflow indefinitely. If `avahi-browse` or a `sigedge-<hardware>.local` lookup
+ever disagrees with NETWORKING.md's table, suspect `/etc/hosts`'s SIGedge block first (see
+`scripts/cfg_ka9q-radio`'s `sync_static_hosts`) -- `status`'s static address depends on it
+in a way `data`'s doesn't.
 
 For hardware checks, stop any service that owns the device first, then use the appropriate tool:
 
