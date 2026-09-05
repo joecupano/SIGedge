@@ -315,6 +315,59 @@ scripts/service_toggle off                        # stop+disable both
 
 It prompts before stopping anything currently active (`-y` to skip) and supports `-n`/`--dry-run` to preview the `systemctl` calls it would make.
 
+### RX-888 in OpenWebRX+ — confirmed working path (not `packages/pkg_openwebrx`)
+
+`packages/pkg_openwebrx`'s from-source build does not give you a usable
+RX-888 in OpenWebRX+: it builds plain `jketterl/openwebrx` (despite the
+package description) and never clones or builds `sddc_connector`, the
+piece that device needs from that install path. Confirmed working
+alternative, validated end-to-end on rubberduck:
+
+1. Install OpenWebRX+ from the **luarvique PPA**
+   (`https://luarvique.github.io/ppa/noble`, package `openwebrx`) instead
+   of `./SIGedge install openwebrx`. This is the same approach
+   `~/sovereign-sigint/scripts/phase6-openwebrx.sh` uses.
+2. RX-888 support comes from OpenWebRX+'s `soapy_sddc` feature, backed by
+   a SoapySDR module built from **`ON5HB/RX888MK2-Soapy`**
+   (`SOAPYSDDC_REPO` in `~/sovereign-sigint/scripts/phase6-openwebrx-rx888.sh`)
+   — CPU-only, no CUDA, no `sddc_connector`. SIGedge's own `SDDC_Driver`
+   device package (`devices/pkg_rx888`) builds a different SDDC SoapySDR
+   module for its own direct-access purposes; the two are not
+   interchangeable in practice — use the ON5HB build for OpenWebRX+.
+3. Add the `openwebrx` system user to the **`radio`** group
+   (`sudo usermod -aG radio openwebrx`, then restart the service). The
+   RX-888 enumerates as `04b4:00f3` (DFU/unprogrammed) before firmware
+   upload; that device node is `root:radio` mode `0660` plus a `uaccess`
+   ACL that only covers an interactive login "seat" session — neither
+   covers the `openwebrx` service account, so without `radio` group
+   membership the SoapySDR module gets `LIBUSB_ERROR_ACCESS` and
+   `soapy_connector` segfaults trying to stream anyway.
+4. **The RX-888's FX3 chip holds only one driver stack's firmware at a
+   time, loaded fresh into SRAM on every power cycle — and an OS reboot
+   does not count.** A warm reboot resets the USB link (protocol-level)
+   but does not necessarily drop USB port power (VBUS), so the FX3 can
+   still be running whichever firmware a *previous* owner (e.g. `radiod`)
+   loaded, even after a full system reboot. Confirmed symptom: repeated
+   `[SDDC] ERROR - usb_device: libusb Pipe error` on specific write
+   control transfers, immediately followed by a `soapy_connector`
+   segfault on `activateStream`, while a `SoapySDRUtil --probe` still
+   succeeds (probing doesn't touch the same code path). Fix: physically
+   unplug the RX-888 for ~15s and replug it — an actual power cycle, not
+   a reboot — so the FX3 returns to genuine DFU mode
+   (`lsusb -d 04b4:` should show `00f3 ... (DFU mode)`) before the next
+   owner opens it and uploads its own firmware.
+5. In the web UI (Settings → SDR devices → Add new device), the exact
+   entry is `BBRF103 / RX666 / RX888 / RX888 mkII (SDDC) device (via
+   SoapySDR)` — not a generic "SoapySDR device". Sample rate is a fixed
+   list only (2/4/8/16/32/64 MS/s; 64.8, `radiod`'s native rate, is
+   rejected). 32 MS/s avoids the CPU/audio stutter 64 MS/s causes; raise
+   the global FFT size (Settings, not per-device) to 16384 for usable
+   resolution at that rate. Gain lives in the profile, not the live
+   receiver panel. A newly added/edited profile needs
+   `sudo systemctl restart openwebrx` before it appears in the receiver
+   page — it's saved to `/var/lib/openwebrx/settings.json` immediately,
+   it's just the running process's in-memory list that's stale.
+
 ## Troubleshooting
 
 ### A receiver cannot open its SDR
