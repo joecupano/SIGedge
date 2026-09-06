@@ -128,9 +128,29 @@ made and acted on. Add the decision inline when resolved.
   device needs standalone. `build`/`package` actions now say "not
   available, use install" rather than building from source with no
   forcing reason to.
-- [ ] **RTL-433 as a live Kismet source** — same gap as Ubertooth:
-  `kismet_cap_sdr_rtl433` is present but never added as a source and
-  exercised with a real RTL-SDR.
+- [x] **RTL-433 as a live Kismet source** — validated on real hardware
+  (rubberduck's single physical RTL-SDR, serial `rtlsdr-lab`). Clean on
+  the first attempt -- no firmware or permission surprises this time,
+  unlike Ubertooth. Deliberately pinned by serial from the start rather
+  than left to auto-detect (`source=rtl433-sn-rtlsdr-lab:name=ism-rtlsdr`,
+  confirmed correct syntax by reading `find_rtl_by_subinterface()` in
+  Kismet's own `capture_sdr_rtl433_v2.c`): this same physical dongle is
+  also `radiod@rtlsdr-simplex`'s configured device, and that mission,
+  while never actually started on this host (confirmed:
+  `systemctl is-active` reported inactive, 0 loaded radiod units),
+  is still *unpinned* -- it would auto-detect and grab this exact
+  dongle if ever enabled as-is. Pinning Kismet's claim explicitly, and
+  confirming `scripts/device-inventory.sh` now surfaces that exact
+  tension side by side (`radiod@rtlsdr-simplex.conf: ... <unpinned>` next
+  to Kismet's explicit `rtl433-sn-rtlsdr-lab`), is what actually resolves
+  the device-ownership discussion this item forced -- an operator
+  consulting that tool before enabling the radiod mission would see the
+  collision risk immediately rather than discovering it at runtime.
+  Source opened cleanly, stayed stable (zero errors) for the observation
+  window. No ISM-band device detections logged in that window -- not a
+  capability gap, just no active rtl433-protocol traffic nearby at the
+  time (weather stations/sensors/etc. transmit periodically, not
+  continuously, unlike WiFi's constant beaconing).
 
 ## Deferred (deliberate, not bugs — but worth a fresh look)
 
