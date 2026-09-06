@@ -42,12 +42,18 @@
 
 ACTION="$1"
 
-# No SIGedge-validated git ref exists yet for this script (unlike
-# pkg_ka9q-radio's KA9Q_RADIO_REF, which pins a commit confirmed on real
-# hardware). Default to master and pin a specific tag/commit here once a
-# build has actually been validated on SIGedge hardware -- flagged rather
-# than guessed. Override with KISMET_REF=<git-ref> in the meantime.
-KISMET_REF="${KISMET_REF:-master}"
+# Pinned to the commit this whole script was actually validated against
+# on real hardware (rubberduck, 2026-09): build, package (real debian/
+# packaging), install, postinst setuid/group setup, and live 802.11
+# capture all confirmed working at exactly this commit -- see
+# KISMET-CHECKLIST.md and this script's own comments for the detail.
+# Matches pkg_ka9q-radio's own KA9Q_RADIO_REF precedent: a moving
+# upstream default is a real risk (master is active development and may
+# temporarily contain incomplete changes), not a hypothetical one.
+# Override with KISMET_REF=master to track tip, or another ref, if you
+# need something newer -- just re-validate before trusting it the way
+# this commit has been.
+KISMET_REF="${KISMET_REF:-e24ee9be2b56db21c16cffe72d4334bd7232dabe}"
 
 if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
     echo -e "${SIGEDGE_BANNER_COLOR}"

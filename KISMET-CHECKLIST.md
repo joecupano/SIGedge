@@ -69,12 +69,25 @@ made and acted on. Add the decision inline when resolved.
   host runs the postinst correctly (`kismet_cap_*` binaries land
   `root:kismet` mode `4550`); and the resulting Kismet actually captures
   live 802.11 traffic using those permissions, not just installs cleanly.
-- [ ] **The interactive checklist path** (`./SIGedge setup` → whiptail →
-  `scripts/setup_services`'s `grep -qx 'kismet' "$SIGEDGE_INSTALLED_SERVICES"`
-  branch) — only direct `./SIGedge build/package/install kismet` calls
-  were exercised. The orchestration logic (prefer a saved `.deb`, else
-  build) was reviewed but never actually run end-to-end through the real
-  setup flow.
+- [x] **The interactive checklist path** — validated the orchestration
+  logic in isolation rather than a full `./SIGedge setup` run, deliberately:
+  that command also runs `apt-get update && upgrade` on the whole OS and
+  ends with `sudo reboot`, affecting everything else running on rubberduck
+  (SIGliere, any live ka9q-radio/OpenWebRX+ state), not just Kismet --
+  too large a blast radius to justify for this one check. Instead, ran
+  `scripts/setup_services`'s exact real kismet conditional (copied
+  verbatim) against three scenarios with the actual `pkg_kismet`
+  install/build calls stood in for by echo, no sudo, no side effects:
+  kismet selected + a saved `.deb` present → correctly chose `install`;
+  kismet selected + none present → correctly fell back to `build`;
+  kismet not selected → block correctly skipped entirely. The install/
+  build actions themselves are already separately validated many times
+  over; this closes the one previously-untested piece, the branching
+  logic itself. The whiptail checklist entry in `scripts/setup_start` is
+  boilerplate-identical to the already-working `ka9q-radio`/`openwebrx`
+  entries in the same array -- not independently live-testable without an
+  interactive TUI session, but not a distinct risk either given the exact
+  pattern match.
 - [ ] **arm64 / Raspberry Pi 5** — only validated on rubberduck's amd64.
   `pkg_kismet`'s `package` action has an explicit x86_64→amd64,
   aarch64→arm64 branch, but the build itself (dependency availability,
@@ -93,11 +106,12 @@ made and acted on. Add the decision inline when resolved.
   sovereign-sigint pattern) — scoped out of SIGedge entirely and into
   SIGliere per the tiered architecture (SIGedge = capture/aggregation,
   SIGliere = AI/cognition). Nothing built yet on either side.
-- [ ] **`KISMET_REF=master`** — still an unpinned moving target. The
-  script's own comment flags this and suggests pinning a validated
-  commit once one exists, matching `pkg_ka9q-radio`'s `KA9Q_RADIO_REF`
-  precedent. The commit validated this session (`e24ee9be`) is a
-  candidate.
+- [x] **`KISMET_REF`** — pinned to `e24ee9be2b56db21c16cffe72d4334bd7232dabe`,
+  the exact commit every real-hardware validation this session ran
+  against (build, package, install, postinst, live capture). Matches
+  `pkg_ka9q-radio`'s `KA9Q_RADIO_REF` precedent. Still override-able
+  (`KISMET_REF=master` or another ref) for anyone who wants to track tip
+  -- just re-validate before trusting it the way this commit has been.
 - [ ] **`libbtbb` triplication** — `packages/pkg_libbtbb`,
   `devices/pkg_ubertooth` (builds its own `libbtbb` inline, ignoring the
   former), and now Kismet's own `libbtbb-dev` apt dependency are three
