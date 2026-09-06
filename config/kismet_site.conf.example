@@ -32,9 +32,14 @@
 #source=wlxXXXXXXXXXXXX:name=wifi
 
 # --- Web server bind -------------------------------------------------
-# LAN-accessible by default, matching OpenWebRX+'s posture elsewhere in
-# SIGedge. For loopback-only access instead, set this to 127.0.0.1 and
-# reach it via an SSH tunnel: ssh -L 2501:localhost:2501 <user>@<host>
+# Binds all interfaces, matching OpenWebRX+'s posture elsewhere in SIGedge
+# -- but binding is not the same as reachable: SIGedge does not manage ufw
+# for any service, so if this host has ufw's default-deny incoming policy
+# active (check: sudo ufw status), you still need an explicit
+#   sudo ufw allow 2501/tcp
+# or the web UI will listen locally and silently time out from the network.
+# For loopback-only access instead, set this to 127.0.0.1 and reach it via
+# an SSH tunnel: ssh -L 2501:localhost:2501 <user>@<host>
 httpd_bind_address=0.0.0.0
 httpd_port=2501
 

@@ -82,7 +82,7 @@ kismet_verify_install()
     # unconditionally; the others confirm the full dependency set took.
     local helper
     for helper in kismet_cap_linux_wifi kismet_cap_linux_bluetooth \
-                  kismet_cap_ubertooth_one kismet_cap_rtl433 ; do
+                  kismet_cap_ubertooth_one kismet_cap_sdr_rtl433 ; do
         if command -v "$helper" >/dev/null 2>&1; then
             echo "capture helper present: $helper"
         fi
@@ -171,6 +171,18 @@ case "$ACTION" in
 
         echo "-- Building (this takes a while) --"
         make -j"$(nproc)" || return 1
+
+        # Kismet's own Makefile installs its static httpd assets with a
+        # bare `cp -r http_data/* .../httpd/` and no overwrite handling --
+        # confirmed on real hardware to hard-fail ("cp: cannot create
+        # regular file ...: File exists"), aborting suidinstall entirely,
+        # the moment that directory already has content from a prior
+        # install. Kismet ships no 'make uninstall' to clean up with, so
+        # this directory is cleared explicitly before every suidinstall
+        # (build or package) rather than only on first install -- a no-op
+        # if nothing is there yet, but load-bearing on any rebuild/re-
+        # package of an already-installed Kismet.
+        sudo rm -rf /usr/local/share/kismet/httpd
         ;;&
 
 
@@ -210,11 +222,33 @@ case "$ACTION" in
         # it must be told the real install target explicitly since its
         # default (with no command given) is plain `make install`, which
         # would skip the setuid capture helpers entirely.
-        KISMET_BUILD_VERSION="$(git describe --tags --always 2>/dev/null | sed 's/[^0-9A-Za-z.+~-]/-/g')"
+        #
+        # Only --pkgname, matching pkg_direwolf/pkg_multimon-ng/
+        # devices/pkg_ubertooth exactly -- no --requires, no --pkgversion.
+        # Both were tried and both caused real, reproducible problems on
+        # real hardware (--requires's dpkg alternation syntax broke
+        # checkinstall's own argument parsing). checkinstall is fragile
+        # enough that every sibling script in this repo already keeps its
+        # invocation minimal -- that's deliberate, not an oversight, and
+        # worth matching rather than fighting.
+        #
+        # KNOWN COSMETIC QUIRK, confirmed root-caused rather than left as
+        # a mystery: the produced .deb always versions as "2004.03-1"
+        # regardless of --pkgversion (tried and removed above) or its
+        # absence -- reproduced identically both ways. Every auto-detect
+        # path checkinstall's own script documents was checked directly
+        # against this exact source tree and ruled out: no .spec file for
+        # its SPEC_PATH/getparameter path, no '#define VERSION' in
+        # config.log, and configure.ac calls bare AC_INIT with no version
+        # argument at all (Kismet versions via git tags instead, so
+        # PACKAGE_VERSION is empty and `./configure --version` prints only
+        # Autoconf's own boilerplate). Wherever "2004.03" actually comes
+        # from is checkinstall-internal and out of reach of any flag this
+        # script can pass. Harmless: dpkg doesn't validate it, and the
+        # .deb discovery below is glob-based on the package NAME, not the
+        # version. Not worth further investigation.
         sudo checkinstall --install=no --default \
             --pkgname=kismet \
-            --pkgversion="${KISMET_BUILD_VERSION:-0}" \
-            --requires="libwebsockets17|libwebsockets-dev" \
             make suidinstall || return 1
 
         shopt -s nullglob
@@ -295,14 +329,26 @@ case "$ACTION" in
         # suidinstall's setuid capture helpers were confirmed flaky under
         # --user session isolation (same finding pkg_ka9q-radio's radiod
         # does not need to work around, since radiod itself never runs
-        # setuid). Left enabled but not force-restarted on a rebuild, so an
-        # operator's already-running Kismet isn't interrupted by re-running
-        # this script.
+        # setuid).
         sed -e "s|@kismet_user@|$KISMET_TARGET_USER|g" \
             -e "s|@kismet_home@|/home/$KISMET_TARGET_USER|g" \
             "$SIGEDGE_CONFIG/kismet.service" | sudo tee /etc/systemd/system/kismet.service >/dev/null
         sudo systemctl daemon-reload
         sudo systemctl enable kismet.service
+
+        # Start it if it isn't already running -- but don't restart an
+        # operator's already-running Kismet just because this script was
+        # re-run (a rebuild/reinstall). `enable` alone was tried first and
+        # confirmed WRONG on a real from-scratch install: a first-time
+        # install has nothing "already running" to protect, so enable-only
+        # left the daemon never actually started (zero journal entries,
+        # port 2501 never listening) -- the exact cause of a real "browser
+        # connection timed out" report on rubberduck that looked like a
+        # ufw problem but wasn't. is-active gates the start so both cases
+        # are handled correctly.
+        if ! systemctl is-active --quiet kismet.service; then
+            sudo systemctl start kismet.service
+        fi
 
         kismet_verify_install || return 1
 
@@ -311,7 +357,7 @@ case "$ACTION" in
         echo "edit the source= line in /usr/local/etc/kismet_site.conf (see that"
         echo "file's own comments: 'iw dev' for the interface, 'iw list' to"
         echo "confirm monitor-mode support), then:"
-        echo "  sudo systemctl start kismet"
+        echo "  sudo systemctl restart kismet"
         echo
         echo "Group membership ('kismet') only takes effect on a new login/"
         echo "session for $KISMET_TARGET_USER -- log out and back in, or run"
@@ -320,6 +366,23 @@ case "$ACTION" in
         echo
         echo "Web UI: http://<host>:2501/ -- set an administrator username/"
         echo "password on first browse (stored per-user, not site-wide)."
+
+        # SIGedge does not manage ufw for ANY service (confirmed: no other
+        # package script here touches it either) -- a host with ufw's
+        # default-deny incoming policy active will otherwise silently time
+        # out a browser connection to :2501 with no error anywhere, which
+        # looks identical to the daemon simply not running. Surfacing this
+        # explicitly cost real debugging time once already; don't make the
+        # next person rediscover it the same way.
+        if command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "^Status: active"; then
+            if ! sudo ufw status 2>/dev/null | grep -q "2501"; then
+                echo
+                echo "NOTE: ufw is active on this host and port 2501 is not in its"
+                echo "allow list -- the web UI will listen locally but stay unreachable"
+                echo "from the network until you run:"
+                echo "  sudo ufw allow 2501/tcp comment \"Kismet (SIGedge)\""
+            fi
+        fi
         ;;&
 
 
