@@ -2,6 +2,7 @@ etc/INSTALLED_DEVICES
 etc/INSTALLED_PKGS
 etc/INSTALLED_SERVICES
 etc/fftw-wisdom
+wisdom
 source
 __pycache__/
 *.pyc
