@@ -149,7 +149,7 @@ case "$ACTION" in
         # capture-source dev libs so all helpers compile in (see header).
         sudo apt-get update || return 1
         sudo apt-get install -y \
-            build-essential git pkg-config checkinstall \
+            build-essential git pkg-config debhelper dpkg-dev \
             libwebsockets-dev \
             zlib1g-dev libnl-3-dev libnl-genl-3-dev \
             libcap-dev libpcap-dev libnm-dev libdw-dev \
@@ -194,13 +194,18 @@ case "$ACTION" in
         # Kismet's own Makefile installs its static httpd assets with a
         # bare `cp -r http_data/* .../httpd/` and no overwrite handling --
         # confirmed on real hardware to hard-fail ("cp: cannot create
-        # regular file ...: File exists"), aborting suidinstall entirely,
-        # the moment that directory already has content from a prior
-        # install. Kismet ships no 'make uninstall' to clean up with, so
-        # this directory is cleared explicitly before every suidinstall
-        # (build or package) rather than only on first install -- a no-op
-        # if nothing is there yet, but load-bearing on any rebuild/re-
-        # package of an already-installed Kismet.
+        # regular file ...: File exists") the moment that directory
+        # already has content from a prior install. Kismet ships no 'make
+        # uninstall' to clean up with, so this directory is cleared
+        # explicitly before every suidinstall -- a no-op if nothing is
+        # there yet, but load-bearing on any rebuild of an already-
+        # installed Kismet. Only load-bearing for `build` now: `package`
+        # (below) stages into a fresh debian/kismet/ tree via
+        # dpkg-buildpackage instead of writing /usr/local directly, so it
+        # never hits this collision in the first place -- see
+        # config/kismet-debian/rules for why that's a deliberate design
+        # choice, not incidental. Harmless no-op either way, left in this
+        # shared block rather than moved into the build-only one below.
         sudo rm -rf /usr/local/share/kismet/httpd
         ;;&
 
@@ -235,47 +240,61 @@ case "$ACTION" in
         KISMET_DEB_DIR="${SIGEDGE_DEBS}/kismet"
         mkdir -p "$KISMET_DEB_DIR" || return 1
 
-        # Kismet ships no debian/ packaging of its own (unlike ka9q-radio),
-        # so checkinstall wraps the raw `make suidinstall` the same way it
-        # already does for direwolf/multimon-ng/ubertooth in this repo --
-        # it must be told the real install target explicitly since its
-        # default (with no command given) is plain `make install`, which
-        # would skip the setuid capture helpers entirely.
-        #
-        # Only --pkgname, matching pkg_direwolf/pkg_multimon-ng/
-        # devices/pkg_ubertooth exactly -- no --requires, no --pkgversion.
-        # Both were tried and both caused real, reproducible problems on
-        # real hardware (--requires's dpkg alternation syntax broke
-        # checkinstall's own argument parsing). checkinstall is fragile
-        # enough that every sibling script in this repo already keeps its
-        # invocation minimal -- that's deliberate, not an oversight, and
-        # worth matching rather than fighting.
-        #
-        # KNOWN COSMETIC QUIRK, confirmed root-caused rather than left as
-        # a mystery: the produced .deb always versions as "2004.03-1"
-        # regardless of --pkgversion (tried and removed above) or its
-        # absence -- reproduced identically both ways. Every auto-detect
-        # path checkinstall's own script documents was checked directly
-        # against this exact source tree and ruled out: no .spec file for
-        # its SPEC_PATH/getparameter path, no '#define VERSION' in
-        # config.log, and configure.ac calls bare AC_INIT with no version
-        # argument at all (Kismet versions via git tags instead, so
-        # PACKAGE_VERSION is empty and `./configure --version` prints only
-        # Autoconf's own boilerplate). Wherever "2004.03" actually comes
-        # from is checkinstall-internal and out of reach of any flag this
-        # script can pass. Harmless: dpkg doesn't validate it, and the
-        # .deb discovery below is glob-based on the package NAME, not the
-        # version. Not worth further investigation.
-        sudo checkinstall --install=no --default \
-            --pkgname=kismet \
-            make suidinstall || return 1
+        # Real debian/ packaging, authored by SIGedge -- Kismet ships none
+        # upstream. This replaces an earlier checkinstall-based approach
+        # entirely, not just patches it: checkinstall traces `make
+        # suidinstall` writing directly into the live /usr/local, and that
+        # tracing broke in FOUR distinct, real ways on this exact source
+        # tree once /usr/local no longer had leftover state from a prior
+        # raw build to make Kismet's own "skip if it already exists"
+        # config-install guards no-ops -- a version-string auto-detect
+        # placeholder that ignored --pkgversion entirely, a --requires
+        # alternation syntax that corrupted checkinstall's own argument
+        # parsing, an unhandled `cp -r` collision on httpd static assets,
+        # and a `mkdir -p` that failed outright originating a brand-new
+        # directory tree. See config/kismet-debian/rules for the full
+        # reasoning: DESTDIR-staged dh_auto_install sidesteps the entire
+        # class of bug, since debian/kismet/ is a fresh, empty tree every
+        # build -- none of Kismet's skip-if-exists guards can ever fire.
+        if [[ -z "${SIGEDGE_CONFIG:-}" ]]; then
+            echo "ERROR: SIGEDGE_CONFIG is not defined"
+            return 1
+        fi
 
+        rm -rf debian
+        cp -r "${SIGEDGE_CONFIG}/kismet-debian" debian
+        chmod +x debian/rules
+
+        # dpkg-buildpackage (unlike checkinstall) needs debian/changelog
+        # to know the package name/version -- generated here rather than
+        # checked in, since KISMET_REF is a moving target (see its own
+        # comment above), not a fixed release. A real benefit of dropping
+        # checkinstall: this version string actually works now, unlike
+        # checkinstall's silently-ignored --pkgversion.
+        KISMET_BUILD_VERSION="$(git describe --tags --always 2>/dev/null | sed -e 's/^kismet-//' -e 's/[^0-9A-Za-z.+~-]/-/g')"
+        case "$KISMET_BUILD_VERSION" in
+            [0-9]*) ;;
+            *) KISMET_BUILD_VERSION="0-${KISMET_BUILD_VERSION}" ;;
+        esac
+        cat > debian/changelog <<EOF
+kismet (${KISMET_BUILD_VERSION}-1) UNRELEASED; urgency=medium
+
+  * SIGedge packaging (config/kismet-debian/), built from Kismet git ref ${KISMET_REF}.
+
+ -- SIGedge <noreply@sigedge.local>  $(date -R)
+EOF
+
+        dpkg-buildpackage -us -uc -b || return 1
+
+        # dpkg-buildpackage writes the resulting .debs one directory above
+        # the source tree (i.e. $SIGEDGE_SOURCE), not inside it -- same
+        # convention pkg_ka9q-radio's own packaging already relies on.
         shopt -s nullglob
-        kismet_debs=( "kismet_"*"_${PACKAGE_ARCH}"*.deb kismet-*"_${PACKAGE_ARCH}"*.deb )
+        kismet_debs=( "${SIGEDGE_SOURCE}/kismet_"*"_${PACKAGE_ARCH}.deb" )
         shopt -u nullglob
 
         if (( ${#kismet_debs[@]} == 0 )); then
-            echo "ERROR: checkinstall did not produce a .deb for ${PACKAGE_ARCH}"
+            echo "ERROR: dpkg-buildpackage did not produce a .deb for ${PACKAGE_ARCH}"
             return 1
         fi
 
@@ -371,12 +390,24 @@ case "$ACTION" in
 
         kismet_verify_install || return 1
 
+        # Confirmed misleading on a real reinstall: this message used to
+        # print unconditionally, telling an operator their already-working,
+        # already-configured WiFi source (from a PREVIOUS install) still
+        # needed setting up. Check the site conf for a real, active
+        # (uncommented) source= line first and say the true thing either
+        # way.
+        KISMET_ACTIVE_SOURCE="$(grep -E '^source=' /usr/local/etc/kismet_site.conf 2>/dev/null | head -1)"
         echo
-        echo "Kismet installed but its WiFi source is NOT yet configured --"
-        echo "edit the source= line in /usr/local/etc/kismet_site.conf (see that"
-        echo "file's own comments: 'iw dev' for the interface, 'iw list' to"
-        echo "confirm monitor-mode support), then:"
-        echo "  sudo systemctl restart kismet"
+        if [[ -n "$KISMET_ACTIVE_SOURCE" ]]; then
+            echo "WiFi source already configured in kismet_site.conf: ${KISMET_ACTIVE_SOURCE}"
+            echo "(edit that file and 'sudo systemctl restart kismet' to change it)"
+        else
+            echo "Kismet installed but its WiFi source is NOT yet configured --"
+            echo "edit the source= line in /usr/local/etc/kismet_site.conf (see that"
+            echo "file's own comments: 'iw dev' for the interface, 'iw list' to"
+            echo "confirm monitor-mode support), then:"
+            echo "  sudo systemctl restart kismet"
+        fi
         echo
         echo "Group membership ('kismet') only takes effect on a new login/"
         echo "session for $KISMET_TARGET_USER -- log out and back in, or run"

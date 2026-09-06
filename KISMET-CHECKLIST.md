@@ -35,6 +35,40 @@ made and acted on. Add the decision inline when resolved.
   ever shared/pasted anywhere. The `kismet` system group is intentionally
   never removed by `remove`/`purge`, matching `pkg_ka9q-radio`'s same
   choice not to tear down its `radio` system user.
+- [x] **checkinstall replaced entirely with real `debian/` packaging** —
+  not originally its own checklist item; surfaced *while* testing item 1
+  above. Purging and reinstalling from the saved `.deb` revealed it was
+  fundamentally broken: it never contained `kismet.conf` at all (Kismet's
+  Makefile skips rewriting config that already exists, and checkinstall's
+  file-tracking only ever saw a `/usr/local` that already had leftover
+  state from an earlier raw `build` — so it never observed those files
+  being written, and never claimed ownership of them). Installing that
+  `.deb` on a genuinely clean host would crash-loop
+  (`Error reading config file '/usr/local/etc/kismet.conf': No such file
+  or directory`), confirmed live. Chasing that surfaced four total
+  checkinstall failure modes from a clean state (version-string
+  auto-detect ignoring `--pkgversion`, a `--requires` alternation syntax
+  that broke checkinstall's own argument parsing, an unhandled `cp -r`
+  collision, a `mkdir -p` that failed originating a new directory tree) —
+  each fixed only to reveal the next, which is what triggered replacing
+  the mechanism rather than continuing to patch it. New design: real
+  `debian/control` + `debian/rules` + `debian/kismet.postinst`, authored
+  in `config/kismet-debian/` (Kismet ships none upstream), driving
+  `dpkg-buildpackage` with `DESTDIR`-staged installs instead of tracing
+  writes into the live `/usr/local` -- the fresh, empty staging tree on
+  every build is what actually eliminates the whole class of bug, not
+  just the four instances found. Setuid + `kismet`-group ownership on the
+  capture helpers is granted by `debian/kismet.postinst` at install time
+  (resolved fresh on the real target host) rather than baked into the
+  package payload at build time, fixing a real GID-portability problem
+  checkinstall's approach had too (`kismet` is a dynamically-created
+  group with no fixed GID). Fully re-validated end to end on real
+  hardware: `package` produces a complete `.deb` with every config file
+  present and a real version string (`2020-12-R1-2286-ge24ee9be2-1`, not
+  checkinstall's inexplicable `2004.03`); `install` on a genuinely clean
+  host runs the postinst correctly (`kismet_cap_*` binaries land
+  `root:kismet` mode `4550`); and the resulting Kismet actually captures
+  live 802.11 traffic using those permissions, not just installs cleanly.
 - [ ] **The interactive checklist path** (`./SIGedge setup` → whiptail →
   `scripts/setup_services`'s `grep -qx 'kismet' "$SIGEDGE_INSTALLED_SERVICES"`
   branch) — only direct `./SIGedge build/package/install kismet` calls
@@ -73,12 +107,13 @@ made and acted on. Add the decision inline when resolved.
   (confirmed: no package script anywhere manages ufw), so an install-time
   reminder was added instead of an automatic `ufw allow`. Worth
   reconsidering only if that convention itself changes project-wide.
-- [ ] **Post-install messaging is imprecise on reinstall** — the "WiFi
-  source is NOT yet configured" message is static and prints
-  unconditionally, even when `kismet_site.conf` already has a real
-  `source=` line from a previous install (confirmed misleading during the
-  `install`-from-`.deb` test). Cosmetic, but a real rough edge for an
-  operator re-running the script.
+- [x] **Post-install messaging is imprecise on reinstall** — fixed. The
+  "WiFi source is NOT yet configured" message now only prints when
+  `kismet_site.conf` genuinely has no active `source=` line; otherwise it
+  prints the real configured source instead. Verified both branches on
+  real hardware (a fresh site conf correctly showed "NOT yet configured";
+  a reinstall over an already-configured site conf correctly showed the
+  real source line instead of the stale warning).
 
 ## Out of scope, not on this list
 

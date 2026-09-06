@@ -1,0 +1,28 @@
+#!/bin/sh
+# Grants the real setuid-root + 'kismet' group ownership on the capture
+# helper binaries after the package actually lands on its target machine
+# -- deliberately not baked into the package's static file payload at
+# build time. See debian/rules for why: 'kismet' is a dynamically-created
+# group (groupadd -r, no fixed GID), so its numeric GID resolved on the
+# build host would very likely not match whatever it resolves to here.
+# Only the small capture helpers get setuid-root; the kismet server
+# itself runs as a normal user by design (least-privilege capture model,
+# same reasoning throughout this project).
+set -e
+
+case "$1" in
+    configure)
+        getent group kismet >/dev/null 2>&1 || groupadd -r kismet
+
+        for bin in /usr/local/bin/kismet_cap_*; do
+            if [ -f "$bin" ]; then
+                chgrp kismet "$bin"
+                chmod 4550 "$bin"
+            fi
+        done
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
