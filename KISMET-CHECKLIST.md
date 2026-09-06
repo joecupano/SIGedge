@@ -92,10 +92,42 @@ made and acted on. Add the decision inline when resolved.
   `pkg_kismet`'s `package` action has an explicit x86_64→amd64,
   aarch64→arm64 branch, but the build itself (dependency availability,
   compile time, capture helper behavior) has never run on arm64 at all.
-- [ ] **Ubertooth as a live Kismet source** — `kismet_cap_ubertooth_one` is
-  compiled in and confirmed present, but never added as an actual data
-  source with a physical Ubertooth One attached and exercised, unlike
-  WiFi.
+- [x] **Ubertooth as a live Kismet source** — validated on real hardware
+  (physical Ubertooth One attached to rubberduck). Real, non-obvious
+  finding along the way: the device's factory firmware (2017-03-R2, API
+  1.02) was too old for this build's `libubertooth` (1.1, needs API
+  >= 1.06) -- Kismet's own capture helper refused the source with a clear
+  "API mismatch" error. Fixed with a real firmware upgrade
+  (`ubertooth-util -f` then `ubertooth-dfu -d
+  /usr/share/ubertooth/firmware/bluetooth_rxtx.dfu -r`, the CLI's own
+  advertised update procedure) -- confirmed via GreatScottGadgets' own
+  docs before touching real device firmware. Hit one more real gotcha
+  mid-flash: `ubertooth-dfu` run as the plain user failed with a
+  misleading "<file>: Permission denied" (the file itself was genuinely
+  world-readable; the real failure was a libusb device-open error,
+  misattributed in the tool's own error string) -- retrying the identical
+  command with `sudo` succeeded immediately. After the flash, Kismet's
+  own retry loop picked the device back up automatically and the source
+  opened cleanly, stable for the full observation window with zero
+  errors. No Bluetooth device detections logged in that window -- not a
+  capability gap, just no active BT/BLE traffic nearby at the time
+  (Classic Bluetooth sniffing via Ubertooth in particular requires
+  locking onto a frequency-hopping piconet, inherently harder than BLE
+  advertisement capture).
+
+  Also modernized `devices/pkg_ubertooth` while here: it previously built
+  its own `libbtbb` from source into `/usr/local`, alongside the
+  apt-installed `libbtbb1`/`libubertooth1` that `packages/pkg_kismet`'s
+  own build dependencies already pull in -- the same libbtbb-triplication
+  risk flagged elsewhere on this checklist, just discovered concretely
+  this time. Confirmed Ubuntu's own `ubertooth` apt package
+  (2018.12.R1-5.1) is the exact same release as those already-installed
+  headers/runtime libs, so `devices/pkg_ubertooth` now just does
+  `apt-get install ubertooth` -- no competing copies, and it actually
+  provides the CLI tools (`ubertooth-util`, `ubertooth-dfu`, etc.) this
+  device needs standalone. `build`/`package` actions now say "not
+  available, use install" rather than building from source with no
+  forcing reason to.
 - [ ] **RTL-433 as a live Kismet source** — same gap as Ubertooth:
   `kismet_cap_sdr_rtl433` is present but never added as a source and
   exercised with a real RTL-SDR.

@@ -54,7 +54,22 @@
 # INDEX only (ubertooth0, ubertooth1, ...), not by serial -- less stable
 # across reboots/replugging if you ever run more than one, but Ubertooth
 # is priced like HackRF/RX-888 (one unit per host, not a cheap multi-unit
-# device like RTL-SDR), so this is a non-issue in the common case:
+# device like RTL-SDR), so this is a non-issue in the common case.
+#
+# FIRMWARE GOTCHA, confirmed on real hardware: a real Ubertooth One can
+# arrive running firmware too old for this build's libubertooth, and the
+# source will fail with "API mismatch... make sure your libubertooth,
+# libbtbb, and ubertooth firmware are all up to date." Check first:
+#   ubertooth-util -v
+# If the API version it reports is older than what your libubertooth
+# needs, upgrade firmware (devices/pkg_ubertooth's own header comment has
+# the full real-hardware account, including a misleading "Permission
+# denied" that's actually a libusb error, not a file-read error -- retry
+# with sudo if you hit it):
+#   ubertooth-util -f
+#   ubertooth-dfu -d /usr/share/ubertooth/firmware/bluetooth_rxtx.dfu -r
+#
+# Then uncomment and edit the line below (name= is arbitrary):
 #source=ubertooth0:name=bt-ubertooth
 
 # --- Web server bind -------------------------------------------------
