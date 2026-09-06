@@ -1,6 +1,6 @@
 # SIGedge
 
-SIGedge is an SDR edge platform for turning attached radio hardware into RF, IQ, and audio services for network-connected consumers. Typical consumers include analytics and AI workflows, recorders, decoders, operator tools, SDRangel, OpenWebRX+, and custom applications.
+SIGedge is an SDR edge platform for turning attached radio hardware into RF, IQ, and audio services for network-connected consumers. Typical consumers include analytics and AI workflows, recorders, decoders, operator tools, SDRangel, OpenWebRX+, Kismet, and custom applications.
 
 SIGedge supports **two separate, mutually exclusive ways to expose an SDR** — pick one per device, never both at once:
 
@@ -17,6 +17,8 @@ SDR hardware -> direct-access app (SoapySDR / SoapyRemote) -> one exclusive owne
 | Setup section | [ka9q-radio: use and setup](#ka9q-radio-use-and-setup) | [Direct SDR use, including SoapySDR](#direct-sdr-use-including-soapysdr) |
 
 **An SDR must have exactly one active owner.** Do not start a direct-access application against a device that a `radiod` instance already owns, and do not start `radiod` for a device in use by SDRangel, OpenWebRX+, SoapyRemote, `rtl_tcp`, or another application. Two different physical SDRs on the same host can run under two different owners simultaneously (e.g. HackRF under `radiod`, RTL-SDR handed to a direct-access app) — the constraint is per device, not per host.
+
+Kismet extends this same constraint to its own capture sources. It's a protocol-layer monitor (WiFi, Bluetooth, RF) that runs alongside `radiod`, not a replacement for it, and whichever devices it opens directly — RTL-SDR via `kismet_cap_sdr_rtl433`, Ubertooth via `kismet_cap_ubertooth_one` — still need exactly one owner. When two always-on services genuinely need the same device *type* at the same time (`radiod` running an RTL-SDR mission while Kismet also wants RTL-SDR-based ISM-band capture, for instance), the resolution is one physical unit per consumer, each pinned to its own service by USB serial number, never left to auto-detect and risk both landing on the same dongle: `scripts/cfg_ka9q-radio` takes `RTLSDR_SERIAL=<serial>` for `radiod`'s mission, and Kismet's own source definition takes a `rtl433-sn-<serial>`-style string for the same purpose (see `config/kismet_site.conf.example`). RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default here — RX-888/HackRF's higher cost is exactly why the discipline-only, one-unit-total model above still applies to them instead.
 
 ## Architecture
 

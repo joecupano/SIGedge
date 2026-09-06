@@ -31,6 +31,32 @@
 # (name= is just a UI label, arbitrary):
 #source=wlxXXXXXXXXXXXX:name=wifi
 
+# --- RTL-SDR capture source (ISM-band/rtl433, optional) ---------------
+# RTL-SDR is also a `radiod` (ka9q-radio) device elsewhere in SIGedge --
+# see README.md's device-ownership section. A device can only have ONE
+# owner: if this host's RTL-SDR is already a radiod mission
+# (radiod@rtlsdr-simplex or similar), do NOT also point Kismet at that
+# same physical dongle. If you want both running at once, use a SEPARATE
+# RTL-SDR unit for each (they're cheap enough that a dongle per consumer
+# is the practical default) and pin each one explicitly by USB serial so
+# neither service auto-detects and lands on the wrong unit:
+#
+#   rtl_eeprom -d 0                 # read serial for dongle at index 0
+#   rtl_eeprom -d 1                 # read serial for dongle at index 1
+#
+# radiod's own RTL-SDR pinning is RTLSDR_SERIAL=<serial> passed to
+# scripts/cfg_ka9q-radio (see that script's own comments). Kismet's
+# equivalent is a rtl433-sn-<serial> source string:
+#source=rtl433-sn-XXXXXXXX:name=ism-rtlsdr
+
+# --- Ubertooth capture source (Bluetooth/BLE, optional) ---------------
+# Unlike RTL-SDR, Kismet's Ubertooth source selects by NUMERIC DEVICE
+# INDEX only (ubertooth0, ubertooth1, ...), not by serial -- less stable
+# across reboots/replugging if you ever run more than one, but Ubertooth
+# is priced like HackRF/RX-888 (one unit per host, not a cheap multi-unit
+# device like RTL-SDR), so this is a non-issue in the common case:
+#source=ubertooth0:name=bt-ubertooth
+
 # --- Web server bind -------------------------------------------------
 # Binds all interfaces, matching OpenWebRX+'s posture elsewhere in SIGedge
 # -- but binding is not the same as reachable: SIGedge does not manage ufw
