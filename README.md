@@ -1,12 +1,13 @@
 # SIGedge
 
-SIGedge is an SDR edge platform for turning attached radio hardware into RF, IQ, and audio services for network-connected consumers. Typical consumers include analytics and AI workflows, recorders, decoders, operator tools, SDRangel, OpenWebRX+, Kismet, and custom applications.
+SIGedge is an RF edge platform for presenting attached software defined radios (SDRs) to upstream services, local host and network connected, for signals analysis and further services consumption. SIGedge can present signals as raw IQ up to demodulated signals. Potential upstream services include OpenWebRX+, Ollama with Open WebUI, Kismet, SDRangel server and Soapy service consumers.
 
-SIGedge supports **two separate, mutually exclusive ways to expose an SDR** — pick one per device, never both at once:
+Some upstream services require exclusive ownership of an SDR. SIGedge supports this through
+**two separate, mutually exclusive ways to expose an SDR** — pick one per device, never both at once:
 
 ```text
 SDR hardware -> ka9q-radio radiod -> RTP/IP multicast -> any number of network consumers
-SDR hardware -> direct-access app (SoapySDR / SoapyRemote) -> one exclusive owner
+SDR hardware -> direct-access app (SoapySDR / SoapyRemote) -> one exclusive upstream owner
 ```
 
 | | ka9q-radio (primary) | Direct SDR access (alternative) |
