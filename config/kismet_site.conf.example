@@ -1,0 +1,48 @@
+# kismet_site.conf.example -- SIGedge site-local Kismet overrides.
+#
+# Kismet loads *_site.conf LAST, after every shipped config, so this is the
+# correct place for host-specific settings -- never edit the installed
+# /usr/local/etc/kismet*.conf files directly.
+#
+# packages/pkg_kismet installs this file to /usr/local/etc/kismet_site.conf
+# on first install only -- an existing file is left alone on a rebuild or
+# reinstall, so edits made here survive an upgrade.
+#
+# PATH DETAIL THAT MATTERS: Kismet's --sysconfdir for a from-source install
+# is the FLAT /usr/local/etc/ -- NOT /usr/local/etc/kismet/. A
+# kismet_site.conf placed in a subdirectory is silently ignored ("Optional
+# sub-config file not present" in the startup log) and no source loads.
+# ---------------------------------------------------------------------
+
+# --- WiFi capture source ---------------------------------------------
+# No source is pre-defined here. Unlike SIGedge's SDR devices, there is no
+# fixed reference WiFi adapter -- the interface name is host- and
+# chipset-specific (a predictable 'wlx<mac>' name), and not every adapter
+# supports monitor mode without an out-of-tree driver. Before enabling:
+#
+#   iw dev                                              # interface name
+#   iw list | grep -A12 "Supported interface modes"     # look for "* monitor"
+#
+# If "* monitor" is not listed, this adapter cannot be a Kismet source as
+# shipped -- an MT7612U (mainline mt76x2u) works out of the box; an
+# RTL8812AU needs a DKMS driver (e.g. morrownr/8812au) installed first.
+#
+# Then uncomment and edit the line below with this host's actual interface
+# (name= is just a UI label, arbitrary):
+#source=wlxXXXXXXXXXXXX:name=wifi
+
+# --- Web server bind -------------------------------------------------
+# LAN-accessible by default, matching OpenWebRX+'s posture elsewhere in
+# SIGedge. For loopback-only access instead, set this to 127.0.0.1 and
+# reach it via an SSH tunnel: ssh -L 2501:localhost:2501 <user>@<host>
+httpd_bind_address=0.0.0.0
+httpd_port=2501
+
+# --- Notes -------------------------------------------------------------
+# - Admin credentials are NOT set here. They are created on first browse to
+#   http://<host>:2501/ and stored per-user in
+#   ~/.kismet/kismet_httpd.conf -- not site-wide.
+# - .kismet (SQLite) capture logs land in Kismet's working directory (see
+#   WorkingDirectory= in config/kismet.service) unless log_prefix= below
+#   points them at a fixed path instead.
+# log_prefix=/home/<user>/kismet-logs/

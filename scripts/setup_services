@@ -33,6 +33,25 @@ if grep -qx 'openwebrx' "$SIGEDGE_INSTALLED_SERVICES"; then
     source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
 fi
 
+# Kismet is a protocol-layer service (WiFi/Bluetooth capture aggregation),
+# deliberately independent of the radiod/OpenWebRX+ SDR choice above -- it
+# can run alongside either. Prefer a release package when present, same
+# "prefer packaged, fall back to source" pattern as ka9q-radio below; a
+# clean checkout has none yet, so build from source in that case. Its
+# systemd unit is left enabled (see packages/pkg_kismet) since, unlike a
+# radiod mission, Kismet has no per-host receiver config to configure
+# first -- only the WiFi source= line, which the operator sets afterward.
+if grep -qx 'kismet' "$SIGEDGE_INSTALLED_SERVICES"; then
+    KISMET_DEB_DIR="$SIGEDGE_DEBS/kismet"
+
+    if [[ -d "$KISMET_DEB_DIR" ]] && compgen -G "$KISMET_DEB_DIR/*.deb" >/dev/null; then
+        source "$SIGEDGE_PACKAGES/pkg_kismet" install || return 1
+    else
+        echo "No kismet release package found in $KISMET_DEB_DIR; building from source"
+        source "$SIGEDGE_PACKAGES/pkg_kismet" build || return 1
+    fi
+fi
+
 # Prefer release packages when present. ka9q-radio now packages as multiple
 # .deb files (see KA9Q_RADIO_PKGS in pkg_ka9q-radio) built into
 # debs/ka9q-radio/, not a single ka9q-radio_current_<arch>.deb; a clean

@@ -104,6 +104,7 @@ select_services() {
         "Choose which services to install" 20 120 12 \
         "ka9q-radio" "KA9Q-Radio " OFF \
         "openwebrx" "OpenWebRX " OFF \
+        "kismet" "Kismet (WiFi/BT protocol monitor) " OFF \
         "rtltcpsrv" "RTL-TCP Server " OFF \
         "sdrangelsrv" "SDRangel Server " OFF \
         "soapysdrsrv" "SoapySDR Server " OFF \

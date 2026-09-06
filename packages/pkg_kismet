@@ -1,66 +1,331 @@
 #!/bin/bash
 
 ###
-### SIGPI
+### SIGedge
 ###
 ### pkg_kismet
 ###
 ###
-### 20260114-2300
+### 20260906-1200
 ###
-### Package installer kismet
+### Kismet -- WiFi / Bluetooth / RF protocol monitoring aggregation layer.
+###
+### This script is intended to be sourced by the SIGedge parent installer.
+###
+### BUILT FROM SOURCE, deliberately -- NOT from Kismet's own APT repo (the
+### previous version of this script used that repo, pinned to "jammy"
+### 22.04, and would fail on SIGedge's actual target). Kismet's prebuilt
+### 2025+ packages depend on libwebsockets17, which is not installable on
+### Ubuntu 24.04 (Noble carries a different libwebsockets version) -- a
+### confirmed, still-open upstream issue (kismetwireless/kismet#574).
+### Building from source links against Noble's own libwebsockets-dev
+### (4.3.x) instead, sidestepping the pin entirely. Same source-build
+### approach this repo already uses for ka9q-radio (pkg_ka9q-radio) and
+### Ubertooth/libbtbb (devices/pkg_ubertooth). Validated on real hardware
+### under this exact approach in the sovereign-sigint project this evolved
+### from; see docs there for the full history.
+###
+### The FULL capture-source dependency list is installed (libubertooth-dev,
+### libbtbb-dev, librtlsdr-dev) so Kismet's Ubertooth, Bluetooth, and RTL
+### capture helpers are compiled in now -- Kismet selects which capture
+### helpers to build at ./configure time based on which -dev libs are
+### present, so adding that hardware later is "enable the source", not
+### "rebuild Kismet". None of that hardware needs to be attached for the
+### build itself.
+###
+### "make suidinstall" is used, not "make install": only the small capture
+### helper binaries are installed setuid-root; the Kismet server itself
+### runs as a normal user in the 'kismet' group. Least-privilege capture
+### model, matching how ka9q-radio's radiod runs as a dedicated non-root
+### 'radio' user rather than as root.
 ###
 
-if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
+ACTION="$1"
+
+# No SIGedge-validated git ref exists yet for this script (unlike
+# pkg_ka9q-radio's KA9Q_RADIO_REF, which pins a commit confirmed on real
+# hardware). Default to master and pin a specific tag/commit here once a
+# build has actually been validated on SIGedge hardware -- flagged rather
+# than guessed. Override with KISMET_REF=<git-ref> in the meantime.
+KISMET_REF="${KISMET_REF:-master}"
+
+if [[ ! "$ACTION" =~ ^(remove|purge|install|build|package)$ ]]; then
     echo -e "${SIGEDGE_BANNER_COLOR}"
     echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: Unknown action or package"
     echo -e "${SIGEDGE_BANNER_RESET}"
-    exit 1
+    return 1
 fi
 
-case "$1" in
-    remove|purge|install|build|package )
-        echo -e "${SIGEDGE_BANNER_COLOR}"
-        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : KISMET"
-        echo -e "${SIGEDGE_BANNER_RESET}"
-        ;;&
+echo -e "${SIGEDGE_BANNER_COLOR}"
+echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : Kismet"
+echo -e "${SIGEDGE_BANNER_RESET}"
 
-    remove )
-        sudo apt-get remove kismet
-        sed -i /kismet/d $SIGEDGE_INSTALLED
-        sudo rm -rf $DESKTOP_FILES/kismet.desktop
+# The operator account to put in the 'kismet' group and run the systemd
+# unit as. sudo preserves the invoking user in SUDO_USER; fall back to the
+# current user for a non-sudo (e.g. build/package) invocation.
+KISMET_TARGET_USER="${SUDO_USER:-$(id -un)}"
+
+
+kismet_verify_install()
+{
+    local failed=0
+
+    if command -v kismet >/dev/null 2>&1; then
+        echo "kismet: $(command -v kismet) ($(kismet --version 2>/dev/null | head -1))"
+    else
+        echo "ERROR: kismet not found on PATH -- did suidinstall succeed?"
+        failed=1
+    fi
+
+    # Informational: which capture helpers actually got built depends on
+    # which -dev libs configure found. WiFi is the one SIGedge cares about
+    # unconditionally; the others confirm the full dependency set took.
+    local helper
+    for helper in kismet_cap_linux_wifi kismet_cap_linux_bluetooth \
+                  kismet_cap_ubertooth_one kismet_cap_rtl433 ; do
+        if command -v "$helper" >/dev/null 2>&1; then
+            echo "capture helper present: $helper"
+        fi
+    done
+
+    return "$failed"
+}
+
+
+case "$ACTION" in
+
+    remove|purge )
+        sudo systemctl disable --now kismet.service 2>/dev/null || true
+
+        if dpkg -s kismet >/dev/null 2>&1; then
+            if [[ "$ACTION" == "remove" ]]; then
+                sudo apt-get remove -y kismet || return 1
+            else
+                sudo apt-get purge -y kismet || return 1
+            fi
+        else
+            echo "No kismet Debian package is installed"
+        fi
+
+        if [[ -n "${SIGEDGE_INSTALLED:-}" && -f "$SIGEDGE_INSTALLED" ]]; then
+            sed -i '/kismet/d' "$SIGEDGE_INSTALLED"
+        fi
         ;;&
 
     purge )
-        sudo apt-get purge kismet
-        sed -i /kismet/d $SIGEDGE_INSTALLED
-        sudo rm -rf $DESKTOP_FILES/kismet.desktop
+        # Site config and the systemd unit are this script's own install
+        # artifacts, safe to remove. ~/.kismet (per-user web UI credentials)
+        # and any .kismet capture logs are operator data this script never
+        # created directly -- left alone, same reasoning pkg_ka9q-radio
+        # applies to RX-888 firmware ownership.
+        sudo rm -f /usr/local/etc/kismet_site.conf
+        sudo rm -f /etc/systemd/system/kismet.service
+        sudo systemctl daemon-reload
         ;;&
 
-    install )
-        wget -O - https://www.kismetwireless.net/repos/kismet-release.gpg.key --quiet | gpg --dearmor | sudo tee /usr/share/keyrings/kismet-archive-keyring.gpg >/dev/null
-        echo 'deb [signed-by=/usr/share/keyrings/kismet-archive-keyring.gpg] https://www.kismetwireless.net/repos/apt/release/jammy jammy main' | sudo tee /etc/apt/sources.list.d/kismet.list >/dev/null
-        sudo apt update
-        sudo apt install -y kismet
-        cat $SIGEDGE_PKGLIST|grep "kismet" >> $SIGEDGE_INSTALLED
-        sudo cp $SIGEDGE_DESKTOP/kismet.desktop $DESKTOP_FILES
+
+    install|build|package )
+        ## DEPENDENCIES
+        # Full list from Kismet's own Linux install docs, plus the
+        # capture-source dev libs so all helpers compile in (see header).
+        sudo apt-get update || return 1
+        sudo apt-get install -y \
+            build-essential git pkg-config checkinstall \
+            libwebsockets-dev \
+            zlib1g-dev libnl-3-dev libnl-genl-3-dev \
+            libcap-dev libpcap-dev libnm-dev libdw-dev \
+            libsqlite3-dev libsensors-dev libusb-1.0-0-dev \
+            libprotobuf-dev libprotobuf-c-dev protobuf-compiler \
+            protobuf-c-compiler \
+            librtlsdr-dev \
+            libubertooth-dev libbtbb-dev libmosquitto-dev \
+            libpcre2-dev libssl-dev || return 1
         ;;&
+
+
+    build|package )
+        ## SOURCE / BUILD
+        if [[ -z "${SIGEDGE_SOURCE:-}" ]]; then
+            echo "ERROR: SIGEDGE_SOURCE is not defined"
+            return 1
+        fi
+
+        mkdir -p "$SIGEDGE_SOURCE"
+        cd "$SIGEDGE_SOURCE" || return 1
+
+        if [[ -d kismet/.git ]]; then
+            git -C kismet fetch --quiet origin || return 1
+        else
+            rm -rf kismet
+            git clone --quiet https://www.kismetwireless.net/git/kismet.git || return 1
+        fi
+
+        git -C kismet checkout --quiet "$KISMET_REF" || return 1
+        git -C kismet pull --quiet --ff-only 2>/dev/null || true
+
+        cd kismet || return 1
+        git rev-parse HEAD
+
+        echo "-- ./configure (watch its summary for which capture sources it finds) --"
+        ./configure || return 1
+
+        echo "-- Building (this takes a while) --"
+        make -j"$(nproc)" || return 1
+        ;;&
+
 
     build )
-        echo -e "${SIGEDGE_BANNER_COLOR}"
-        echo -e "${SIGEDGE_BANNER_COLOR} ##   Build option not available"
-        echo -e "${SIGEDGE_BANNER_RESET}"
-	    ;;&
+        # Manual test-build path: raw suidinstall, untracked by dpkg.
+        # `package` (below) builds its own .deb via checkinstall instead of
+        # compiling twice.
+        sudo make suidinstall || return 1
+
+        if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+            grep "kismet" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
+        fi
+        ;;&
+
 
     package )
-        echo -e "${SIGEDGE_BANNER_COLOR}"
-        echo -e "${SIGEDGE_BANNER_COLOR} ##   Package option not available"
-        echo -e "${SIGEDGE_BANNER_RESET}"
-	    ;;&
+        if [[ -z "${SIGEDGE_DEBS:-}" ]]; then
+            echo "ERROR: SIGEDGE_DEBS is not defined"
+            return 1
+        fi
 
-    remove|purge|install )
+        case "${SIGEDGE_HWARCH:-}" in
+            x86_64 )  PACKAGE_ARCH="amd64" ;;
+            aarch64 ) PACKAGE_ARCH="arm64" ;;
+            * )
+                echo "ERROR: Unsupported SIGEDGE_HWARCH: ${SIGEDGE_HWARCH:-undefined}"
+                return 1
+                ;;
+        esac
+
+        KISMET_DEB_DIR="${SIGEDGE_DEBS}/kismet"
+        mkdir -p "$KISMET_DEB_DIR" || return 1
+
+        # Kismet ships no debian/ packaging of its own (unlike ka9q-radio),
+        # so checkinstall wraps the raw `make suidinstall` the same way it
+        # already does for direwolf/multimon-ng/ubertooth in this repo --
+        # it must be told the real install target explicitly since its
+        # default (with no command given) is plain `make install`, which
+        # would skip the setuid capture helpers entirely.
+        KISMET_BUILD_VERSION="$(git describe --tags --always 2>/dev/null | sed 's/[^0-9A-Za-z.+~-]/-/g')"
+        sudo checkinstall --install=no --default \
+            --pkgname=kismet \
+            --pkgversion="${KISMET_BUILD_VERSION:-0}" \
+            --requires="libwebsockets17|libwebsockets-dev" \
+            make suidinstall || return 1
+
+        shopt -s nullglob
+        kismet_debs=( "kismet_"*"_${PACKAGE_ARCH}"*.deb kismet-*"_${PACKAGE_ARCH}"*.deb )
+        shopt -u nullglob
+
+        if (( ${#kismet_debs[@]} == 0 )); then
+            echo "ERROR: checkinstall did not produce a .deb for ${PACKAGE_ARCH}"
+            return 1
+        fi
+
+        rm -f "$KISMET_DEB_DIR"/*.deb
+        mv "${kismet_debs[@]}" "$KISMET_DEB_DIR/" || return 1
+        echo "Created Debian package in: $KISMET_DEB_DIR"
+        ls -1 "$KISMET_DEB_DIR"
+        ;;&
+
+
+    install )
+        ## PACKAGE
+        if [[ -z "${SIGEDGE_DEBS:-}" ]]; then
+            echo "ERROR: SIGEDGE_DEBS is not defined"
+            return 1
+        fi
+
+        KISMET_DEB_DIR="${SIGEDGE_DEBS}/kismet"
+
+        if [[ ! -d "$KISMET_DEB_DIR" ]]; then
+            echo "ERROR: $KISMET_DEB_DIR not found. Run the package action first, or supply it separately."
+            return 1
+        fi
+
+        shopt -s nullglob
+        kismet_debs=( "$KISMET_DEB_DIR"/*.deb )
+        shopt -u nullglob
+
+        if (( ${#kismet_debs[@]} == 0 )); then
+            echo "ERROR: No .deb files found in $KISMET_DEB_DIR"
+            return 1
+        fi
+
+        # apt-get (not raw dpkg -i) so any runtime Depends checkinstall
+        # recorded get resolved from the Ubuntu archive in the same pass.
+        sudo apt-get install -y "${kismet_debs[@]}" || return 1
+
+        if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
+            grep "kismet" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
+        fi
+        ;;&
+
+
+    build|install )
+        ## POST-INSTALL (common to both the untracked build path and the
+        ## dpkg-tracked install path -- both leave a working suidinstall'd
+        ## Kismet on the box)
+
+        # 'kismet' group: normally created by suidinstall itself, but don't
+        # assume it -- group membership below is silently meaningless if it
+        # doesn't exist yet.
+        getent group kismet >/dev/null || sudo groupadd kismet
+        sudo usermod -aG kismet "$KISMET_TARGET_USER"
+
+        # Site config: installed once, not overwritten on a rebuild/
+        # reinstall, so local edits (the WiFi source= line, log_prefix,
+        # etc.) survive. Kismet's --sysconfdir for a from-source install is
+        # the FLAT /usr/local/etc/ -- NOT /usr/local/etc/kismet/. Dropping
+        # this in a subdirectory results in "Optional sub-config file not
+        # present" at startup and no source loads; this exact gotcha cost
+        # real debugging time in the sovereign-sigint project this evolved
+        # from.
+        if [[ ! -f /usr/local/etc/kismet_site.conf ]]; then
+            sudo cp "$SIGEDGE_CONFIG/kismet_site.conf.example" \
+                /usr/local/etc/kismet_site.conf
+            sudo chmod 644 /usr/local/etc/kismet_site.conf
+        fi
+
+        # systemd unit: a *system* unit, not --user, by deliberate choice --
+        # suidinstall's setuid capture helpers were confirmed flaky under
+        # --user session isolation (same finding pkg_ka9q-radio's radiod
+        # does not need to work around, since radiod itself never runs
+        # setuid). Left enabled but not force-restarted on a rebuild, so an
+        # operator's already-running Kismet isn't interrupted by re-running
+        # this script.
+        sed -e "s|@kismet_user@|$KISMET_TARGET_USER|g" \
+            -e "s|@kismet_home@|/home/$KISMET_TARGET_USER|g" \
+            "$SIGEDGE_CONFIG/kismet.service" | sudo tee /etc/systemd/system/kismet.service >/dev/null
+        sudo systemctl daemon-reload
+        sudo systemctl enable kismet.service
+
+        kismet_verify_install || return 1
+
+        echo
+        echo "Kismet installed but its WiFi source is NOT yet configured --"
+        echo "edit the source= line in /usr/local/etc/kismet_site.conf (see that"
+        echo "file's own comments: 'iw dev' for the interface, 'iw list' to"
+        echo "confirm monitor-mode support), then:"
+        echo "  sudo systemctl start kismet"
+        echo
+        echo "Group membership ('kismet') only takes effect on a new login/"
+        echo "session for $KISMET_TARGET_USER -- log out and back in, or run"
+        echo "'newgrp kismet', before running kismet interactively. The"
+        echo "systemd unit runs under a fresh session, so it already has it."
+        echo
+        echo "Web UI: http://<host>:2501/ -- set an administrator username/"
+        echo "password on first browse (stored per-user, not site-wide)."
+        ;;&
+
+
+    remove|purge|install|build|package )
         echo -e "${SIGEDGE_BANNER_COLOR}"
-        echo -e "${SIGEDGE_BANNER_COLOR} ##  $1 : KISMET - Completed"
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $ACTION : Kismet - Completed"
         echo -e "${SIGEDGE_BANNER_RESET}"
         ;;
 esac

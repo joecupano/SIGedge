@@ -1,0 +1,37 @@
+[Unit]
+# System-level unit that autostarts the Kismet daemon on boot.
+#
+# @kismet_user@ / @kismet_home@ are substituted by packages/pkg_kismet at
+# install time (same @...@ templating pkg_openwebrx uses for
+# config/openwebrx.service).
+#
+# System unit, not --user: 'make suidinstall' installs setuid-root capture
+# helpers that need to be launched by a process with system-level session
+# isolation -- running the daemon out of a --user session made monitor-mode
+# operations flaky in testing. System-level unit + non-root User=/Group=
+# gives the same least-privilege posture with cleaner semantics.
+Description=Kismet WiFi/Bluetooth capture (SIGedge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Runs as the operator in the 'kismet' group -- the capture helpers are
+# setuid-root from 'make suidinstall', so the daemon itself never needs to
+# be root.
+Type=simple
+User=@kismet_user@
+Group=kismet
+# --no-ncurses / --no-console-wrapper are essential for a daemon: Kismet's
+# default interactive mode tries to attach to a tty and exits with "cannot
+# open terminal" under systemd otherwise.
+ExecStart=/usr/local/bin/kismet --no-ncurses --no-console-wrapper
+Restart=on-failure
+RestartSec=10
+# Kismet writes 'Kismet-<timestamp>.kismet' capture logs to its working
+# directory by default; the operator's home keeps them somewhere findable
+# without extra kismet_site.conf configuration (log_prefix= there overrides
+# this if a fixed path is wanted instead).
+WorkingDirectory=@kismet_home@
+
+[Install]
+WantedBy=multi-user.target
