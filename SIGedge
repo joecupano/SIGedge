@@ -15,7 +15,7 @@
 ###          purge                  remove installed TARGET and purge configs
 ###          build                  compile and install TARGET (option may not be available)
 ###          package                compile only and copy packaged to SIG/debs directory (option may not be available)
-###          menu                   Gtk Menu for SIGpi package management
+###          menu                   Gtk Menu for SIGedge package management
 ###          update                 check for TARGET updates
 ###          upgrade                upgrade TARGET to latest release
 ###
@@ -32,15 +32,15 @@
 ###                 apps            Manage applications (install/remove)
 ###
 ###          list
-###                 packages        List all packages included with SIGpi
-###                 installed       List installed SIGpi packages
-###                 library         List all packages included with SIGpi with installed ones marked with an *
+###                 packages        List all packages included with SIGedge
+###                 installed       List installed SIGedge packages
+###                 library         List all packages included with SIGedge with installed ones marked with an *
 ###
-###          shell           provide SIGpi env variables around a TARGET
+###          shell           provide SIGedge env variables around a TARGET
 ###
 ###       TARGET
 ###
-###          A SIGpi package
+###          A SIGedge package
 ###
 ###       DEVICE
 ###
@@ -91,12 +91,12 @@ SIGEDGE_IPADDR=`ip -br address | grep UP | awk '{print $1}'`
 
 SIGEDGE_update(){
     # Check for available updates to package
-    wget https://raw.githubusercontent.com/joecupano/SIGpi-edge/main/packages/PACKAGES -P $HOME/Downloads
+    wget https://raw.githubusercontent.com/joecupano/SIGedge/main/packages/PACKAGES -P $HOME/Downloads
 
     if grep $3 "$HOME/Downloads/PACKAGES"; then
-        SIG_PKGSTAMP = 'grep $3 "$SIGEDGE_HOME/packages/PACKAGES"| cut -d,-f2'
-        SIG_PKGNEW = 'grep $3 "$HOME/Downloads/PACKAGES"| cut -d,-f2'
-        if [$SIG_PKGNEW != $SIG_PKGSTAMP]; then
+        SIG_PKGSTAMP=$(grep $3 "$SIGEDGE_HOME/packages/PACKAGES" | cut -d, -f2)
+        SIG_PKGNEW=$(grep $3 "$HOME/Downloads/PACKAGES" | cut -d, -f2)
+        if [ "$SIG_PKGNEW" != "$SIG_PKGSTAMP" ]; then
             echo "Update $SIG_PKGNEW is available"
         else
             echo "No updates available"
@@ -248,7 +248,7 @@ case "$1" in
     * )
         cat <<EOF
 
-       Usage:  SIGpi [ACTION] [TARGET|DEVICE]
+       Usage:  SIGedge [ACTION] [TARGET|DEVICE]
 
        ACTION
 
@@ -274,15 +274,15 @@ case "$1" in
                  apps            Manage applications (install/remove)
 
           list
-                 packages        List all packages included with SIGpi
-                 installed       List installed SIGpi packages
-                 library         List all packages included with SIGpi with installed ones marked with an *
+                 packages        List all packages included with SIGedge
+                 installed       List installed SIGedge packages
+                 library         List all packages included with SIGedge with installed ones marked with an *
 
-          shell           provide SIGpi env variables around a TARGET
+          shell           provide SIGedge env variables around a TARGET
 
        TARGET
 
-          A SIGpi package
+          A SIGedge package
 
        DEVICE
 
