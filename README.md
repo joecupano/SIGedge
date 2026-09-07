@@ -208,5 +208,6 @@ Before enabling it, make sure none of the SDRs it would expose are already owned
 - [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) — full ka9q-radio deployment instructions, RX-888 firmware bring-up, and current implementation limitations.
 - [NETWORKING.md](NETWORKING.md) — how ka9q-radio's multicast addressing actually resolves (`dns = yes` vs. hashed), and this deployment's static address scheme.
 - [PROJECT_STATE.md](PROJECT_STATE.md) — what's actually been installed, tested, or found broken on a live host, as distinct from what the scripts and docs describe in general.
+- [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md) — full Kismet build/install, capture-source configuration (WiFi, RTL-SDR, Ubertooth), and troubleshooting.
 - [KISMET-CHECKLIST.md](KISMET-CHECKLIST.md) — validation status and open items for Kismet as a protocol-layer monitor alongside `radiod`.
 - [ai/README.md](ai/README.md) — bridges/adapters exposing `radiod` multicast channels to AI consumers (the "APIs / MCP" branch of the architecture diagram above).

@@ -18,7 +18,7 @@ radiod -- it can run alongside a radiod/OpenWebRX+ deployment rather than instea
 comments for the WiFi source= line every host must set manually, and for the optional
 RTL-SDR (`rtl433-sn-<serial>`) and Ubertooth (`ubertooth<N>`) capture sources -- including
 the device-ownership caveat against `radiod`'s own use of the same hardware, per
-README.md.
+README.md. Full walkthrough in [KISMET-DEPLOYMENT.md](../KISMET-DEPLOYMENT.md).
 
 **radiod@\<instance>.conf** - Proven radiod reference-mission templates, deployed as-is by
 `scripts/cfg_ka9q-radio` (`##TTL##`/`##CENTER_HZ##`/`##IFACE##`/`##SERIAL##` are the only
