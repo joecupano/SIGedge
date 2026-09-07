@@ -72,6 +72,11 @@ select_startscreen(){
         "Configure this SIGedge node, select SDR hardware, and choose optional direct-access services." 12 80
 }
 
+select_services_intro(){
+    TERM=ansi whiptail --title "Services Setup" --clear --msgbox \
+        "Next: choose services. Two of them are alternatives for the SAME radio, never both at once on one device:\n\n  - ka9q-radio shares a radio over the network to any number of consumers.\n  - OpenWebRX / RTL-TCP / SDRangel / SoapySDR Server each give ONE app exclusive access instead, same as plugging that radio straight into it.\n\nKismet is different -- it runs alongside either choice, on its own WiFi/RTL-SDR/Ubertooth sources.\n\nEverything installs disabled; you enable a specific service for a specific device afterward." 20 80
+}
+
 select_devices() {
     FUN=$(whiptail --title "Devices Setup" --clear --checklist --separate-output \
         "Choose SDR devices " 20 80 12 \
@@ -101,13 +106,13 @@ select_devices() {
 
 select_services() {
     FUN=$(whiptail --title "Services Installation" --clear --checklist --separate-output \
-        "Choose which services to install" 20 120 12 \
-        "ka9q-radio" "KA9Q-Radio " OFF \
-        "openwebrx" "OpenWebRX " OFF \
-        "kismet" "Kismet (WiFi/BT protocol monitor) " OFF \
-        "rtltcpsrv" "RTL-TCP Server " OFF \
-        "sdrangelsrv" "SDRangel Server " OFF \
-        "soapysdrsrv" "SoapySDR Server " OFF \
+        "Choose which services to install (see previous screen: pick ONE per radio between ka9q-radio and the direct-access services below; Kismet runs alongside either)" 20 120 12 \
+        "ka9q-radio" "KA9Q-Radio -- shared radio server (multicast)" OFF \
+        "openwebrx" "OpenWebRX -- browser waterfall (direct access, alt. to ka9q-radio)" OFF \
+        "kismet" "Kismet -- WiFi/BT protocol monitor (runs alongside)" OFF \
+        "rtltcpsrv" "RTL-TCP Server (direct access, alt. to ka9q-radio)" OFF \
+        "sdrangelsrv" "SDRangel Server (direct access, alt. to ka9q-radio)" OFF \
+        "soapysdrsrv" "SoapySDR Server (direct access, alt. to ka9q-radio)" OFF \
 		3>&1 1>&2 2>&3)
     RET=$?
     if [ $RET -eq 1 ]; then
@@ -148,6 +153,7 @@ cd "$SIGEDGE_SOURCE" || return 1
 calc_wt_size
 select_startscreen
 select_devices
+select_services_intro
 select_services
 TERM=ansi whiptail --title "SIGedge Setup" --clear --msgbox "Ready to continue" 12 120
 system_current
@@ -162,31 +168,17 @@ source "$SIGEDGE_SCRIPTS/setup_services" || return 1
 # Expose the repository command without copying it away from its support files.
 sudo ln -sfn "$SIGEDGE_HOME/SIGedge" /usr/local/bin/SIGedge
 
-# Install RTL-TCP Server
-if [ "$2" = "rtltcpsrv" ]; then
-    sudo cp $SIGEDGE_CONFIG/rtltcp.service /etc/systemd/system/sigpi-node.service
-    echo "sigpi-node_rtltcp" >> $SIGEDGE_INSTALLED
-fi
-
-# Install SDRangel Server
-if [ "$2" = "sdrangelsrv" ]; then
-    source $SIGEDGE_PACKAGES/pkg_sdrangelsrv install
-    sudo cp $SIGEDGE_CONFIG/sdrangelsrv.service /etc/systemd/system/sigpi-node.service
-    echo "sigpi-node_sdrangelsrv" >> $SIGEDGE_INSTALLED
-fi
-
-# Install SoapySDR Server
-if [ "$2" = "soapysdrsrv" ]; then
-    sudo cp $SIGEDGE_CONFIG/soapysdrsrv.service /etc/systemd/system/sigpi-node.service
-    echo "sigpi-node_soapysdrsrv" >> $SIGEDGE_INSTALLED
-fi
-
-# OpenWebRX is installed unconditionally by setup_services (see there),
-# left disabled. This block used to duplicate that install here, gated on
-# "$2" = "openwebrx" -- but $2 is SIGedge's own second CLI argument, never
-# actually set to "openwebrx" by anything (the whiptail checklist above
-# records selections into $SIGEDGE_INSTALLED_SERVICES instead), so this was
-# unreachable dead code. Removed rather than fixed in place.
+# OpenWebRX, RTL-TCP Server, SDRangel Server, and SoapySDR Server are all
+# installed by setup_services (see there), gated on
+# $SIGEDGE_INSTALLED_SERVICES -- not here. This block used to duplicate
+# that install for all four, gated on "$2" = "<name>" -- but $2 is
+# SIGedge's own second CLI argument, never actually set to any of these by
+# anything (the whiptail checklist above records selections into
+# $SIGEDGE_INSTALLED_SERVICES instead), so it was unreachable dead code for
+# all four services, not just OpenWebRX. Removed rather than fixed in
+# place; each also used to share a single hardcoded unit name
+# (/etc/systemd/system/sigpi-node.service) that a second selection would
+# have silently clobbered -- setup_services now gives each its own unit.
 
 echo -e "${SIGEDGE_BANNER_COLOR}"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"

@@ -6,8 +6,14 @@ Various config files.
 **banner_sigedge**        - Banner screens called by SIGedge setup
 
 **openwebrx.service**     - Optional Service instead of radiod (switch safely with `scripts/service_toggle`)
-**rtltcp.service**        - Optional Service instead of radiod
-**sdrangelsrv.service**   - Optional Service instead of radiod
+**rtltcp.service**        - Optional direct-access service instead of radiod, deployed by
+`scripts/setup_services` when `rtltcpsrv` is selected. No package script -- just wraps
+`rtl_tcp`, which the rtlsdr device driver already installs.
+**sdrangelsrv.service**   - Optional direct-access service instead of radiod, deployed by
+`scripts/setup_services` (via `packages/pkg_sdrangelsrv`) when `sdrangelsrv` is selected.
+**soapysdrsrv.service**   - Optional direct-access service instead of radiod, deployed by
+`scripts/setup_services` when `soapysdrsrv` is selected. No package script -- just wraps
+`SoapySDRServer`, which `soapysdr-tools` already installs unconditionally.
 
 **kismet.service**        - Kismet capture daemon unit, deployed by `packages/pkg_kismet`
 (`@kismet_user@`/`@kismet_home@` placeholders filled in per host, same `@...@` convention as

@@ -33,6 +33,41 @@ if grep -qx 'openwebrx' "$SIGEDGE_INSTALLED_SERVICES"; then
     source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
 fi
 
+# RTL-TCP Server, SDRangel Server, and SoapySDR Server are, like OpenWebRX
+# above, direct-access alternatives to a radiod mission on the same device
+# -- not something that runs alongside it (see README.md's "Device
+# ownership across services"). Installed here but left disabled+stopped,
+# same install-now/activate-later split as everything else in this script.
+# Each gets its own systemd unit name rather than a shared generic one, so
+# more than one can be installed side by side without one clobbering
+# another's unit file -- a real bug in an earlier version of this wiring.
+#
+# Neither RTL-TCP Server nor SoapySDR Server has its own package script:
+# both just wrap a binary that another already-installed package provides
+# (rtl_tcp from the rtlsdr device driver, SoapySDRServer from the
+# soapysdr-tools installed unconditionally in setup_devices), so installing
+# either here is only ever "copy and register the unit", no separate
+# build/install step. There is also no remove/purge path for either yet --
+# same gap as any other file this script drops outside package management;
+# worth a real pkg_rtltcp/pkg_soapysdrsrv if that's ever needed.
+if grep -qx 'rtltcpsrv' "$SIGEDGE_INSTALLED_SERVICES"; then
+    sudo cp "$SIGEDGE_CONFIG/rtltcp.service" /etc/systemd/system/rtltcp.service
+    sudo systemctl daemon-reload
+    grep "^rtltcp," "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED"
+fi
+
+if grep -qx 'sdrangelsrv' "$SIGEDGE_INSTALLED_SERVICES"; then
+    source "$SIGEDGE_PACKAGES/pkg_sdrangelsrv" install || return 1
+    sudo cp "$SIGEDGE_CONFIG/sdrangelsrv.service" /etc/systemd/system/sdrangelsrv.service
+    sudo systemctl daemon-reload
+fi
+
+if grep -qx 'soapysdrsrv' "$SIGEDGE_INSTALLED_SERVICES"; then
+    sudo cp "$SIGEDGE_CONFIG/soapysdrsrv.service" /etc/systemd/system/soapysdrsrv.service
+    sudo systemctl daemon-reload
+    grep "^soapysdrsrv," "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED"
+fi
+
 # Kismet is a protocol-layer service (WiFi/Bluetooth capture aggregation),
 # deliberately independent of the radiod/OpenWebRX+ SDR choice above -- it
 # can run alongside either. Prefer a release package when present, same
@@ -83,6 +118,26 @@ if grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
         KA9Q_ENABLE_SERVICES=0 KA9Q_START_SERVICES=0 \
             source "$SIGEDGE_SCRIPTS/cfg_ka9q-radio" hackrf || return 1
     fi
+fi
+
+# Both a shared-server and a direct-access path were selected -- installed
+# side by side (as designed) but only one may ever OWN a given device at a
+# time (see README.md's "Device ownership across services"). Flag it now,
+# once, rather than let it surface later as a runtime USB/driver conflict.
+DIRECT_ACCESS_SELECTED=""
+for svc in openwebrx rtltcpsrv sdrangelsrv soapysdrsrv; do
+    if grep -qx "$svc" "$SIGEDGE_INSTALLED_SERVICES"; then
+        DIRECT_ACCESS_SELECTED="${DIRECT_ACCESS_SELECTED:+$DIRECT_ACCESS_SELECTED, }$svc"
+    fi
+done
+if [[ -n "$DIRECT_ACCESS_SELECTED" ]] && grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
+    echo
+    echo "NOTE: ka9q-radio and a direct-access service ($DIRECT_ACCESS_SELECTED) were"
+    echo "both selected. Both installed, both left disabled -- but only one may own a"
+    echo "given radio at a time. Enable a radiod mission (scripts/cfg_ka9q-radio) OR"
+    echo "the direct-access service for a device, never both; use"
+    echo "scripts/device-inventory.sh to check what's already claimed before enabling"
+    echo "either one."
 fi
 
 echo -e "${SIGEDGE_BANNER_COLOR}"

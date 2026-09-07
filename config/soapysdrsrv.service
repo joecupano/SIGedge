@@ -1,5 +1,5 @@
 [Unit]
-Description=SigPi SoapySDRServer
+Description=SIGedge SoapySDRServer
 
 Wants=network-online.target
 After=network-online.target
@@ -7,7 +7,6 @@ After=network-online.target
 [Service]
 ExecStartPre=/bin/sleep 15
 ExecStart=/bin/sh -c "SoapySDRServer"
-WorkingDirectory=/home/pi
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
