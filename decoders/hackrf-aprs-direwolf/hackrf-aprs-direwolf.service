@@ -1,0 +1,24 @@
+[Unit]
+Description=SIGedge decoder bridge: radiod@hackrf-aprs -> direwolf (APRS)
+# Only meaningful once radiod@hackrf-aprs is actually publishing audio.
+Requires=radiod@hackrf-aprs.service
+After=radiod@hackrf-aprs.service
+
+[Service]
+Type=simple
+# @decoder_user@ -- replace with an existing operator account before
+# installing this unit (there is no dedicated "radio" user in this
+# project, only the "radio" group -- see KA9Q-DEPLOYMENT.md's
+# `usermod -aG radio <user>` convention for granting SDR device access).
+# pcmrecord only needs to join a multicast group and direwolf only needs
+# to read stdin, so neither needs root; the account just needs to be in
+# the "radio" group if this host's multicast join is gated by it.
+User=@decoder_user@
+Group=radio
+# @sigedge_home@ -- absolute path to this checkout, e.g. /home/<user>/SIGedge.
+ExecStart=@sigedge_home@/decoders/hackrf-aprs-direwolf/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

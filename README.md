@@ -87,6 +87,14 @@ Each of the following runs on top of one of the two models above. This section c
 
 **Setup:** [ai/README.md](ai/README.md).
 
+### Decoders — turning a radiod channel into decoded output
+
+**Delivers:** the "decoders" leaf of the architecture diagram above — a `radiod` audio channel feeding an actual protocol/signal decoder (APRS, POCSAG, weather-satellite images, ...) instead of only being available to listen to.
+
+**How it fits together:** `ka9q-radio-tools`' `pcmrecord` reads one channel's multicast audio and pipes it, raw, into a decoder that already accepts an audio stream on stdin — the same shape as the well-known `rtl_fm | direwolf` or `rtl_fm | multimon-ng` patterns, just with `pcmrecord` in place of `rtl_fm`.
+
+**Setup:** [decoders/README.md](decoders/README.md); `decoders/hackrf-aprs-direwolf` is the first instance, bridging the `hackrf-aprs` reference mission into `direwolf`.
+
 ## Device ownership across services
 
 Every service above eventually touches physical hardware, and **an SDR must have exactly one active owner at a time.** Do not start a direct-access application (SDRangel, OpenWebRX+, GQRX, `rtl_tcp`, ...) against a device a `radiod` instance already owns, and do not start `radiod` for a device a direct-access app or SoapyRemote already has open. Two different physical SDRs on the same host can run under two different owners simultaneously — for example, HackRF under `radiod` while an RTL-SDR is handed to a direct-access app — the constraint is per device, not per host.
@@ -200,3 +208,4 @@ Before enabling it, make sure none of the SDRs it would expose are already owned
 - [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md) — full Kismet build/install, capture-source configuration (WiFi, RTL-SDR, Ubertooth), and troubleshooting.
 - [KISMET-CHECKLIST.md](KISMET-CHECKLIST.md) — validation status and open items for Kismet as a protocol-layer monitor alongside `radiod`.
 - [ai/README.md](ai/README.md) — bridges/adapters exposing `radiod` multicast channels to AI consumers (the "APIs / MCP" branch of the architecture diagram above).
+- [decoders/README.md](decoders/README.md) — bridges feeding `radiod` multicast audio into decode-side applications (the "decoders" branch of the architecture diagram above).
