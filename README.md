@@ -26,7 +26,7 @@ Kismet extends this same constraint to its own capture sources. It's a protocol-
 ```text
                               SIGedge node
 
-  RX-888 MkII ----+       +-------------------+
+  RX-888 MkII -----+       +-------------------+
   HackRF ----------+------>| ka9q-radio radiod |----> RTP/IP multicast
   RTL-SDR ---------+       +-------------------+              |
                                                              +--> APIs / MCP
