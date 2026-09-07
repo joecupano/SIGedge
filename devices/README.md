@@ -1,6 +1,8 @@
 # Devices
 
-These scripts are called during SIGedge installation as well as from the **SIGedge device (remove|purge|install|build) package <DEVICE>** script for managing devices
+These scripts are called during SIGedge installation as well as directly via
+**SIGedge device (install|remove|purge|build|package) <DEVICE>** for managing
+individual devices.
 
 SIGedge project does its utmost to ensure the most recent stable releases for devices are available for installation and maintained in the **debs** directory.
 

@@ -9,9 +9,14 @@ starts a menu to select devices and services
 - **setup_core**
 installs baseline software and libraries used across packages.
 
-- **setup_device**
+- **setup_devices**
 installs drivers and supporting software for devices. Each device has
-its own **scripts/pkg_<device>** for installation and removal.
+its own **devices/pkg_<device>** for installation and removal.
+
+- **setup_decoders**
+installs codecs, demodulators, and other decode-side utilities (APTdec,
+codec2, multimon-ng, direwolf, etc.) shared across packages, independent
+of which SDR devices or services are selected.
 
 - **setup_services**
 installs and setups services that use the devices. The services are setup
@@ -57,6 +62,16 @@ enabling+starting the other, verifying each step against `systemctl`
 rather than assuming prior state. Run directly, e.g.
 `scripts/service_toggle status` or `scripts/service_toggle ka9q-radio`;
 not part of the `SIGedge` parent-script dispatch.
+
+- **device-inventory.sh**
+Read-only tool: lists attached SDR/RF USB devices (RTL-SDR, HackRF,
+Ubertooth, RX-888) with their real USB serial numbers, side by side with
+whatever SIGedge configs currently claim each device -- `radiod`'s
+per-mission `serial =` line and Kismet's `rtl433-sn-<serial>` /
+`ubertooth<N>` source lines in `kismet_site.conf`. Answers "what's
+attached and what already claims it" without resolving conflicts itself;
+see [README.md](../README.md)'s device-ownership section for the actual
+one-owner-per-device policy. No arguments, no sudo required: `./scripts/device-inventory.sh`.
 
 ## Environment support
 - **SIGedge_env**
