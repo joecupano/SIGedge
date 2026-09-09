@@ -114,6 +114,18 @@ case "$1" in
         cd $SIGEDGE_SOURCE
         git clone -b master https://github.com/jketterl/digiham.git
         cd digiham
+
+        # ICU 61+ headers (e.g. localpointer.h's LocalOpenPointer; Debian
+        # Trixie ships 76.1) use `auto` as a non-type template parameter --
+        # a C++17 feature. digiham pins CMAKE_CXX_STANDARD 11, so
+        # src/lib/charset.cpp fails to compile ("parameter declared
+        # 'auto'") against any current ICU. digiham's own code has no
+        # dependency on pre-C++17 semantics, so raise the standard instead
+        # of pinning ICU down. Safe to re-run.
+        if grep -q 'set(CMAKE_CXX_STANDARD 11)' CMakeLists.txt; then
+            sed -i 's/set(CMAKE_CXX_STANDARD 11)/set(CMAKE_CXX_STANDARD 17)/' CMakeLists.txt
+        fi
+
         mkdir build && cd build
         cmake ..
         make
@@ -137,7 +149,15 @@ case "$1" in
 
         ## PACKAGE
         cd $SIGEDGE_SOURCE
-        git clone https://github.com/jketterl/openwebrx.git
+        # openwebrx's master/dev branch (whatever becomes the next release,
+        # currently v1.3.0-dev) runs ahead of its own sibling dependencies:
+        # it requires csdr/pycsdr >= 0.19.0, a version neither project has
+        # actually released yet (their master is still 0.18.2), so it
+        # refuses to start with "you are missing required dependencies"
+        # even right after a clean install. Pin the latest tagged release
+        # instead, which only requires csdr/pycsdr >= 0.18.0 and digiham
+        # >= 0.6 -- both satisfied by what's built above.
+        git clone -b 1.2.2 https://github.com/jketterl/openwebrx.git
 
         ### Data Storage
         sudo mkdir /var/lib/openwebrx
