@@ -31,7 +31,7 @@ Package installation and radio mission configuration are intentionally separate.
 
 The repository is not yet a fully reproducible production deployment:
 
-- `packages/pkg_ka9q-radio install` expects a populated `debs/ka9q-radio/` directory (one `.deb` per binary package SIGedge builds; see step 2). Nothing is tracked there by default, so a clean checkout must run the `package` action first, use the source `build` action, or supply the directory separately.
+- `packages/pkg_ka9q-radio install` expects a populated `debs/ka9q-radio/` directory (one `.deb` per binary package SIGedge builds; see step 2). It now ships both amd64 and arm64 prebuilt packages there, matching the rest of `debs/`'s dual-arch convention (e.g. `debs/codec2_current_*.deb`). Both `install` and the `setup_services` check that decides between installing packages vs. building from source filter to the host's own arch -- a real bug fixed 2026-09 (they used to accept or merely check for *any* `.deb` regardless of architecture, so an arm64 host with only a committed amd64 build would get fed an unsatisfiable amd64 install instead of falling back to building from source). A checkout missing packages for the current arch still needs the `package` action run (or `build`, or the directory supplied separately).
 - ka9q-radio's own upstream `debian/` packaging defines build dependencies (`libfobos-dev`, `libhydrasdr-dev`) that are not packaged for Ubuntu 24.04 at all. `packages/pkg_ka9q-radio package` works around this by excluding the binary packages that need them (`ka9q-radio-fobos`, `ka9q-radio-hydrasdr`) from the build rather than trying to satisfy them.
 - `packages/pkg_ka9q-radio` pins ka9q-radio to a fixed commit via `KA9Q_RADIO_REF` rather than following upstream `main`, so it can lag behind current upstream until that pin is updated deliberately.
 - RX-888 firmware also defaults to its upstream `main` branch unless `RX888_FW_REF` is set.
@@ -322,6 +322,14 @@ RX-888 in OpenWebRX+: it builds plain `jketterl/openwebrx` (despite the
 package description) and never clones or builds `sddc_connector`, the
 piece that device needs from that install path. Confirmed working
 alternative, validated end-to-end on rubberduck:
+
+> As of 2026-09, `packages/pkg_openwebrx`'s general build/install chain
+> itself is fixed and verified working on arm64/Debian Trixie (GCC 14),
+> where it previously failed outright -- see [PROJECT_STATE.md](PROJECT_STATE.md)
+> for the three specific bugs and fixes. That does not change the
+> `sddc_connector` gap above: RX-888 support specifically is still
+> unavailable through this path, so the PPA route below remains the one
+> to use for that device.
 
 1. Install OpenWebRX+ from the **luarvique PPA**
    (`https://luarvique.github.io/ppa/noble`, package `openwebrx`) instead

@@ -105,12 +105,12 @@ Kismet extends the same rule to its own capture sources. Whichever devices it op
 
 ## Supported platforms
 
-The current target operating system is Ubuntu Server 24.04 LTS on:
+The current target operating system is Ubuntu Server 24.04 LTS or Debian GNU/Linux 13 (Trixie, including Raspberry Pi OS Desktop, which is Trixie-based) on:
 
 - amd64/x86_64 systems, typically an Intel i5-class host with 16 GB RAM and at least 128 GB storage
-- arm64/aarch64 systems, including Raspberry Pi 5 with 8 GB RAM and at least 64 GB storage
+- arm64/aarch64 systems, including Raspberry Pi 4B/5 with 4-8 GB RAM and at least 64 GB storage
 
-Actual compute, USB, network, and storage requirements depend on the SDR sample rates and the number and type of downstream channels.
+Actual compute, USB, network, and storage requirements depend on the SDR sample rates and the number and type of downstream channels. See [PROJECT_STATE.md](PROJECT_STATE.md) for what's actually been validated on a live host, as distinct from this general target.
 
 ## SIGedge installation and setup
 
