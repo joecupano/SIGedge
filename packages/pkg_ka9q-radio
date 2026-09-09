@@ -286,12 +286,29 @@ case "$ACTION" in
             return 1
         fi
 
+        # debs/ generally holds both amd64 and arm64 builds side by side
+        # (see e.g. debs/codec2_current_*.deb); filter to this host's arch
+        # so a foreign-arch build sitting in the directory is never handed
+        # to apt-get alongside (or instead of) the one that actually matches.
+        case "${SIGEDGE_HWARCH:-}" in
+            x86_64 )
+                PACKAGE_ARCH="amd64"
+                ;;
+            aarch64 )
+                PACKAGE_ARCH="arm64"
+                ;;
+            * )
+                echo "ERROR: Unsupported SIGEDGE_HWARCH: ${SIGEDGE_HWARCH:-undefined}"
+                return 1
+                ;;
+        esac
+
         shopt -s nullglob
-        ka9q_debs=( "$KA9Q_DEB_DIR"/*.deb )
+        ka9q_debs=( "$KA9Q_DEB_DIR"/*"_${PACKAGE_ARCH}.deb" )
         shopt -u nullglob
 
         if (( ${#ka9q_debs[@]} == 0 )); then
-            echo "ERROR: No .deb files found in $KA9Q_DEB_DIR"
+            echo "ERROR: No ${PACKAGE_ARCH} .deb files found in $KA9Q_DEB_DIR"
             return 1
         fi
 
@@ -474,7 +491,11 @@ case "$ACTION" in
             return 1
         fi
 
-        rm -f "$KA9Q_DEB_DIR"/*.deb
+        # Only clear this arch's own previous packages -- debs/ normally
+        # holds an amd64 and an arm64 build side by side (see e.g.
+        # debs/codec2_current_*.deb), so a blanket `*.deb` here would
+        # silently delete the other arch's packages every time this runs.
+        rm -f "$KA9Q_DEB_DIR"/*"_${PACKAGE_ARCH}.deb"
         mv "${found_pkgs[@]}" "$KA9Q_DEB_DIR/" || return 1
         echo "Created Debian packages in: $KA9Q_DEB_DIR"
         ls -1 "$KA9Q_DEB_DIR"

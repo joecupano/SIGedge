@@ -91,14 +91,26 @@ fi
 # .deb files (see KA9Q_RADIO_PKGS in pkg_ka9q-radio) built into
 # debs/ka9q-radio/, not a single ka9q-radio_current_<arch>.deb; a clean
 # checkout has none yet, so build and install from source in that case.
+#
+# debs/ can (and normally does, see debs/codec2_current_*.deb etc.) hold
+# both an amd64 and an arm64 build side by side, so presence of *any* .deb
+# here is not enough -- it must match this host's arch, or a foreign-arch
+# leftover (e.g. an amd64-only build committed from a different dev
+# machine) gets fed straight to apt-get and fails on unmet dependencies
+# instead of falling back to building from source.
+case "${SIGEDGE_HWARCH:-}" in
+    x86_64 ) KA9Q_PACKAGE_ARCH="amd64" ;;
+    aarch64 ) KA9Q_PACKAGE_ARCH="arm64" ;;
+    * ) KA9Q_PACKAGE_ARCH="" ;;
+esac
 
 if grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
     KA9Q_DEB_DIR="$SIGEDGE_DEBS/ka9q-radio"
 
-    if [[ -d "$KA9Q_DEB_DIR" ]] && compgen -G "$KA9Q_DEB_DIR/*.deb" >/dev/null; then
+    if [[ -d "$KA9Q_DEB_DIR" && -n "$KA9Q_PACKAGE_ARCH" ]] && compgen -G "$KA9Q_DEB_DIR/*_${KA9Q_PACKAGE_ARCH}.deb" >/dev/null; then
         source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" install || return 1
     else
-        echo "No ka9q-radio release packages found in $KA9Q_DEB_DIR; building from source"
+        echo "No ka9q-radio release packages for ${KA9Q_PACKAGE_ARCH:-this arch} found in $KA9Q_DEB_DIR; building from source"
         source "$SIGEDGE_PACKAGES/pkg_ka9q-radio" build || return 1
     fi
 
