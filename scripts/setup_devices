@@ -26,6 +26,57 @@ cd "$SIGEDGE_SOURCE" || return 1
 if [[ ! -d SDDC_Driver/.git ]]; then
     git clone https://github.com/renardspark/SDDC_Driver.git || return 1
 fi
+
+# Upstream's CPU-detection regex only matches "arm.*", which misses the
+# "aarch64" CMAKE_SYSTEM_PROCESSOR reported on 64-bit Raspberry Pi OS (and
+# Apple Silicon Linux), so the build aborts with "Unable to identify CPU".
+# Patch it in until upstream fixes it; safe to re-run.
+if ! grep -q 'aarch64' SDDC_Driver/Core/CMakeLists.txt; then
+    sed -i 's/MATCHES "arm\.\*"/MATCHES "(arm|aarch64).*"/' SDDC_Driver/Core/CMakeLists.txt
+fi
+
+# HWCAP_NEON is only defined for 32-bit ARM; on aarch64 (64-bit Pi OS, Apple
+# Silicon Linux) NEON/Advanced SIMD is mandatory and reported as HWCAP_ASIMD
+# instead, so detect_neon() fails to compile as shipped. Patch it in until
+# upstream fixes it; safe to re-run.
+if ! grep -q 'HWCAP_ASIMD' SDDC_Driver/Core/fft_mt_r2iq/fft_mt_r2iq.cpp; then
+    python3 - <<'EOF'
+from pathlib import Path
+p = Path("SDDC_Driver/Core/fft_mt_r2iq/fft_mt_r2iq.cpp")
+old = "\t\tunsigned long caps = getauxval(AT_HWCAP);\n\t\treturn (caps & HWCAP_NEON);\n"
+new = (
+    "\t\tunsigned long caps = getauxval(AT_HWCAP);\n"
+    "#if defined(__aarch64__)\n"
+    "\t\treturn (caps & HWCAP_ASIMD);\n"
+    "#else\n"
+    "\t\treturn (caps & HWCAP_NEON);\n"
+    "#endif\n"
+)
+text = p.read_text()
+assert old in text, "SDDC_Driver detect_neon() patch target not found; upstream may have changed"
+p.write_text(text.replace(old, new, 1))
+EOF
+    [[ $? -eq 0 ]] || return 1
+fi
+
+# '-mfpu=' is an AArch32-only GCC/Clang flag: on 64-bit ARM (aarch64/arm64)
+# NEON/Advanced SIMD is mandatory in the ISA and neither compiler accepts
+# that flag there. Upstream only skips it for APPLE (Apple Silicon clang),
+# so it still breaks the GCC build on 64-bit Raspberry Pi OS. Key the check
+# off the CPU being 64-bit ARM instead; safe to re-run.
+if ! grep -q 'aarch64|arm64' SDDC_Driver/Core/CMakeLists.txt; then
+    python3 - <<'EOF'
+from pathlib import Path
+p = Path("SDDC_Driver/Core/CMakeLists.txt")
+old = '    if(APPLE)\n'
+new = '    if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$")\n'
+text = p.read_text()
+assert old in text, "SDDC_Driver -mfpu patch target not found; upstream may have changed"
+p.write_text(text.replace(old, new, 1))
+EOF
+    [[ $? -eq 0 ]] || return 1
+fi
+
 cmake -S SDDC_Driver -B SDDC_Driver/build -DCMAKE_BUILD_TYPE=Release || return 1
 cmake --build SDDC_Driver/build -j"$(nproc)" || return 1
 sudo cmake --install SDDC_Driver/build || return 1
