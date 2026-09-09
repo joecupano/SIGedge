@@ -52,6 +52,21 @@ case "$1" in
         cd $SIGEDGE_SOURCE
         git clone -b master https://github.com/jketterl/csdr.git
         cd csdr
+
+        # libcsdr.c's NEON_OPTS path (compiled in on arm/aarch64, see
+        # src/CMakeLists.txt's HAS_NEON check) calls errhead() -- a helper
+        # defined in csdr.c (the csdr-bin executable, using its own
+        # argv_global/argc_global) that is never linked into the csdr
+        # *library* target this file builds into. Older GCC only warned on
+        # the resulting implicit declaration (and would have crashed with
+        # an undefined-symbol error the first time this path actually ran);
+        # GCC 14 makes it a hard error, so the arm/aarch64 build never gets
+        # past `make`. Drop the stray calls, keeping the diagnostics; safe
+        # to re-run.
+        if grep -q 'errhead(); fprintf(stderr,"taps_length' src/libcsdr.c; then
+            sed -i -E 's/errhead\(\); (fprintf\(stderr,"(taps_length|padded_taps_length|taps|NEON aligned taps) )/\1/' src/libcsdr.c
+        fi
+
         mkdir build && cd build
         cmake ..
         make
