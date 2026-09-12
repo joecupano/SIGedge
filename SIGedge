@@ -93,9 +93,18 @@ SIGEDGE_update(){
     # Check for available updates to package
     wget https://raw.githubusercontent.com/joecupano/SIGedge/main/packages/PACKAGES -P $HOME/Downloads
 
+    # PACKAGES/DEVICES now carry separate amd64/arm64 version columns (field
+    # 2 / field 3) since the two architectures can and do ship different
+    # versions of the same package (e.g. sdrangelsrv) -- pick the column
+    # matching this host.
+    case "$SIGEDGE_HWARCH" in
+        aarch64|ARMv8) SIG_VERFIELD=3 ;;
+        *) SIG_VERFIELD=2 ;;
+    esac
+
     if grep $3 "$HOME/Downloads/PACKAGES"; then
-        SIG_PKGSTAMP=$(grep $3 "$SIGEDGE_HOME/packages/PACKAGES" | cut -d, -f2)
-        SIG_PKGNEW=$(grep $3 "$HOME/Downloads/PACKAGES" | cut -d, -f2)
+        SIG_PKGSTAMP=$(grep $3 "$SIGEDGE_HOME/packages/PACKAGES" | cut -d, -f$SIG_VERFIELD)
+        SIG_PKGNEW=$(grep $3 "$HOME/Downloads/PACKAGES" | cut -d, -f$SIG_VERFIELD)
         if [ "$SIG_PKGNEW" != "$SIG_PKGSTAMP" ]; then
             echo "Update $SIG_PKGNEW is available"
         else
@@ -142,9 +151,9 @@ case "$1" in
             echo -e "${SIGEDGE_BANNER_COLOR} ##"
             echo -e "${SIGEDGE_BANNER_RESET}"
             echo " "
-            echo -e "INSTALLED\t PACKAGE\t VERSION\t DESCRIPTION"
+            echo -e "INSTALLED\t PACKAGE\t VERSION(amd64)\t VERSION(arm64)\t DESCRIPTION"
             echo " "
-            awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s\n", $1, $2, $3}' $SIGEDGE_INSTALLED|more
+            awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-40s\n", $1, $2, $3, $4}' $SIGEDGE_INSTALLED|more
         fi
 
         if [ "$2" = "packages" ]; then
@@ -154,9 +163,9 @@ case "$1" in
             echo -e "${SIGEDGE_BANNER_COLOR} ##"
             echo -e "${SIGEDGE_BANNER_RESET}"
             echo " "
-            echo -e "PACKAGE\t VERSION\t DESCRIPTION"
+            echo -e "PACKAGE\t VERSION(amd64)\t VERSION(arm64)\t DESCRIPTION"
             echo " "
-            awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s\n", $1, $2, $3}' $SIGEDGE_PKGLIST|more
+            awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-40s\n", $1, $2, $3, $4}' $SIGEDGE_PKGLIST|more
         fi
 
         if [ "$2" = "library" ]; then
@@ -168,13 +177,13 @@ case "$1" in
                 echo -e "${SIGEDGE_BANNER_COLOR} ##"
                 echo -e "${SIGEDGE_BANNER_RESET}"
                 echo " "
-                echo -e "\tINSTALLED\t PACKAGE\t VERSION\t DESCRIPTION"
+                echo -e "\tINSTALLED\t PACKAGE\t VERSION(amd64)\t VERSION(arm64)\t DESCRIPTION"
                 while IFS= read -r line_file1
                 do
                         if grep -qF "$line_file1" "$file2"; then
-                                echo -e "*\t $line_file1"|awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-15s\n", " ", $1, $2, $3}'
+                                echo -e "*\t $line_file1"|awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-15s %-40s\n", " ", $1, $2, $3, $4}'
                         else
-                                echo -e " \t $line_file1"|awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-15s\n", " ", $1, $2, $3}'
+                                echo -e " \t $line_file1"|awk 'BEGIN {FS=","} {printf "%-15s %-15s %-15s %-15s %-40s\n", " ", $1, $2, $3, $4}'
                         fi
                 done < "$file1"
         fi
