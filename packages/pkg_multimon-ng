@@ -95,7 +95,12 @@ case "$1" in
         mkdir build && cd build
         cmake .. -Wno-dev
         make -j4
-        sudo checkinstall --install=no
+        # -y/--pkgname make this fully non-interactive: checkinstall's
+        # interactive package-name prompt is how the committed arm64 .deb
+        # ended up named "multimon-g" (missing the "n") instead of
+        # "multimon-ng" -- a human mistyping that prompt, not a script bug,
+        # but pinning the name here makes it impossible to recur.
+        sudo checkinstall -y --install=no --pkgname=multimon-ng
         sudo mv *.deb $SIGEDGE_DEBS
         ;;&
 
