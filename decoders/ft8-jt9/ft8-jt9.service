@@ -1,0 +1,22 @@
+[Unit]
+Description=SIGedge decoder bridge: radiod USB channel -> jt-decoded/jt9 (FT8)
+# @radiod_service@ -- e.g. radiod@rx888-ft8.service, once that mission
+# exists (see README.md; no reference mission covers this today).
+Requires=@radiod_service@
+After=@radiod_service@
+
+[Service]
+Type=simple
+# @decoder_user@ -- an existing operator account, not a dedicated system
+# user (see hackrf-aprs-direwolf.service's identical note). Needs the
+# "radio" group only if this host's multicast join is gated by it.
+User=@decoder_user@
+Group=radio
+Environment=FT8_DATA_GROUP=@ft8_data_group@
+# @sigedge_home@ -- absolute path to this checkout, e.g. /home/<user>/SIGedge.
+ExecStart=@sigedge_home@/decoders/ft8-jt9/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

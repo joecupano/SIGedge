@@ -19,14 +19,17 @@ subdirectory's own README covers its prerequisites and how to run it.
 | [hackrf-aprs-direwolf](hackrf-aprs-direwolf/README.md) | `direwolf` (AX.25/APRS) | `radiod@hackrf-aprs` (existing reference mission) | No — rides the existing FM/144.390 MHz channel |
 | [freedv-hf](freedv-hf/README.md) | `codec2`'s `freedv_rx` (FreeDV digital voice) | any USB HF channel you configure | Yes — no reference mission demodulates USB |
 | [radiosonde-rs41](radiosonde-rs41/README.md) | `pkg_radiosonde`'s `rs41dm_dft` (telemetry) | any FM 400-406 MHz channel you configure | Yes — no reference mission covers that band |
+| [ft8-jt9](ft8-jt9/README.md) | ka9q-radio's own `jt-decoded` + WSJT-X's `jt9` (FT8/FT4/WSPR) | any USB HF channel you configure | Yes — no reference mission demodulates USB |
 
 `hackrf-aprs-direwolf` needed nothing beyond a shell pipeline because a
-matching `radiod` channel already existed. `freedv-hf` and
-`radiosonde-rs41` don't have that luxury — their operating frequency is a
-real band/site choice, so those two require adding a channel yourself
+matching `radiod` channel already existed. `freedv-hf`, `radiosonde-rs41`,
+and `ft8-jt9` don't have that luxury — their operating frequency is a
+real band/site choice, so those three require adding a channel yourself
 first via `scripts/cfg_ka9q-radio_tui` (see each bridge's README for a
 starting-point frequency and why `cfg_ka9q-radio` itself can't generate
-one for you).
+one for you). `ft8-jt9` is also structurally different from the other
+three: `jt-decoded` is a native ka9q-radio multicast client, not a shell
+pipe through `pcmrecord`/`sox` — see its README.
 
 ## Not wired up — no CLI decoder exists to pipe into
 

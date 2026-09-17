@@ -42,7 +42,7 @@
 
 set -euo pipefail
 
-DATA_GROUP="${FREEDV_DATA_GROUP:?Set FREEDV_DATA_GROUP to the radiod channel's multicast data address (see this bridge's README -- no default exists, unlike hackrf-aprs-direwolf)}"
+DATA_GROUP="${FREEDV_DATA_GROUP:?Set FREEDV_DATA_GROUP to the radiod channel multicast data address -- see this bridge README; no default exists, unlike hackrf-aprs-direwolf}"
 
 # radiod doesn't expose a channel's output rate on the raw stream itself --
 # verify once with a plain (non-raw) capture before trusting this default:

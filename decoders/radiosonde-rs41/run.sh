@@ -42,7 +42,7 @@
 
 set -euo pipefail
 
-DATA_GROUP="${RS_DATA_GROUP:?Set RS_DATA_GROUP to the radiod channel's multicast data address (see this bridge's README -- no default exists, unlike hackrf-aprs-direwolf)}"
+DATA_GROUP="${RS_DATA_GROUP:?Set RS_DATA_GROUP to the radiod channel multicast data address -- see this bridge README; no default exists, unlike hackrf-aprs-direwolf}"
 
 # Verify once with a plain (non-raw) capture before trusting this default
 # -- see freedv-hf/README.md's identical caveat.
