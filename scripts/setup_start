@@ -180,9 +180,29 @@ sudo ln -sfn "$SIGEDGE_HOME/SIGedge" /usr/local/bin/SIGedge
 # (/etc/systemd/system/sigpi-node.service) that a second selection would
 # have silently clobbered -- setup_services now gives each its own unit.
 
+# Recap what actually got selected/installed -- setup_services and
+# setup_devices only gate their work on these two files, silently skipping
+# anything not recorded here (e.g. a whiptail checklist item that was
+# highlighted but never toggled with Space never lands in either file).
+# Without this recap, "Setup Complete" gave no way to tell whether a given
+# yes/select actually took, especially with 15+ package builds having
+# scrolled past by this point and only 15 seconds before an unattended
+# reboot.
+recap_selected() {
+    local label="$1" file="$2"
+    if [[ -s "$file" ]]; then
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $label: $(paste -sd, "$file" | sed 's/,/, /g')"
+    else
+        echo -e "${SIGEDGE_BANNER_COLOR} ##  $label: (none selected)"
+    fi
+}
+
 echo -e "${SIGEDGE_BANNER_COLOR}"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"
 echo -e "${SIGEDGE_BANNER_COLOR} ##  Setup Complete !!"
+echo -e "${SIGEDGE_BANNER_COLOR} ##"
+recap_selected "Devices installed" "$SIGEDGE_INSTALLED_DEVICES"
+recap_selected "Services installed" "$SIGEDGE_INSTALLED_SERVICES"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"
 echo -e "${SIGEDGE_BANNER_COLOR}"
 echo -e "${SIGEDGE_BANNER_COLOR} ##"
