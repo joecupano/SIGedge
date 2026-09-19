@@ -71,15 +71,21 @@ actually live right now. Lists attached SDR/RF USB devices (RTL-SDR,
 HackRF, Ubertooth, RX-888) with their real USB serial numbers, side by
 side with whatever SIGedge configs currently claim each device --
 `radiod`'s per-mission `serial =` line (plus each mission's live
-systemd enabled/active state) and Kismet's `rtl433-sn-<serial>` /
-`ubertooth<N>` source lines in `kismet_site.conf` -- cross-matched
+systemd enabled/active state), OpenWebRX's live enabled/active state,
+Kismet's `rtl433-sn-<serial>` / `ubertooth<N>` source lines in
+`kismet_site.conf`, and RTL-TCP server's `RTLTCP_SERIAL` override
+(`/etc/default/rtltcp`, see `config/rtltcp.service`) -- cross-matched
 against what's actually plugged in, and flags it if a radiod mission and
-OpenWebRX are ever both active at once (the one conflict that actually
-matters). Answers "what's attached, what claims it, and is that claim
-live" without switching anything itself -- use `service_toggle` above to
+OpenWebRX are ever both active at once (the one conflict that can
+actually be confirmed). SDRangel server and SoapySDR Server are reported
+as active-or-not only -- neither exposes a per-device claim SIGedge can
+read. Answers "what's attached, what claims it, and is that claim live"
+without switching anything itself -- use `service_toggle` above to
 actually move a device between radiod and OpenWebRX; see
 [README.md](../README.md)'s device-ownership section for the actual
-one-owner-per-device policy. No arguments, no sudo required: `./scripts/device-inventory.sh`.
+one-owner-per-device policy. No arguments, no sudo required:
+`./scripts/device-inventory.sh` (add `--json` for a machine-readable
+version of the same data).
 
 ## Environment support
 - **SIGedge_env**

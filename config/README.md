@@ -8,7 +8,10 @@ Various config files.
 **openwebrx.service**     - Optional Service instead of radiod (switch safely with `scripts/service_toggle`)
 **rtltcp.service**        - Optional direct-access service instead of radiod, deployed by
 `scripts/setup_services` when `rtltcpsrv` is selected. No package script -- just wraps
-`rtl_tcp`, which the rtlsdr device driver already installs.
+`rtl_tcp`, which the rtlsdr device driver already installs. Reads an optional
+`RTLTCP_SERIAL=<serial>` from `/etc/default/rtltcp` (via `EnvironmentFile=-`) to pin a
+specific unit when more than one RTL-SDR is attached; see `scripts/device-inventory.sh`,
+which reports this same claim.
 **sdrangelsrv.service**   - Optional direct-access service instead of radiod, deployed by
 `scripts/setup_services` (via `packages/pkg_sdrangelsrv`) when `sdrangelsrv` is selected.
 **soapysdrsrv.service**   - Optional direct-access service instead of radiod, deployed by

@@ -5,8 +5,24 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
+# RTLTCP_SERIAL=<serial> pins this instance to one physical RTL-SDR when
+# more than one is attached -- read by scripts/device-inventory.sh for
+# claim detection/cross-matching. The "-" prefix means systemd tolerates
+# this file not existing at all (the common case: unpinned, matching
+# every RTL-SDR-using service's prior behavior of auto-detecting
+# whichever unit it finds).
+EnvironmentFile=-/etc/default/rtltcp
 ExecStartPre=/bin/sleep 15
-ExecStart=/bin/sh -c "rtl_tcp -a $(hostname -I)"
+# $$ escapes a literal '$' from systemd's own ${VAR}-substitution pass, so
+# the ${RTLTCP_SERIAL:+...} conditional-expansion syntax reaches the shell
+# unexpanded and is evaluated there instead, against the real
+# RTLTCP_SERIAL environment variable systemd set from EnvironmentFile=
+# above. Verified empirically (both the RTLTCP_SERIAL-unset and -set
+# cases) against a throwaway systemd --user unit before landing here --
+# systemd's own ${VAR} grammar does not understand the bash-style ":+"
+# modifier, so leaving this unescaped would have systemd try and fail to
+# parse it instead of the shell handling it correctly.
+ExecStart=/bin/sh -c "rtl_tcp -a $(hostname -I) $${RTLTCP_SERIAL:+-d \"$$RTLTCP_SERIAL\"}"
 StandardOutput=inherit
 StandardError=inherit
 Restart=always
