@@ -101,7 +101,7 @@ Every service above eventually touches physical hardware, and **an SDR must have
 
 Kismet extends the same rule to its own capture sources. Whichever devices it opens directly — RTL-SDR via `kismet_cap_sdr_rtl433`, Ubertooth via `kismet_cap_ubertooth_one` — still need exactly one owner. When two always-on services genuinely need the same device *type* at once (`radiod` running an RTL-SDR mission while Kismet also wants RTL-SDR-based ISM-band capture, for instance), the resolution is one physical unit per consumer, each pinned to its own service by USB serial number rather than left to auto-detect and risk both landing on the same dongle — RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default; RX-888/HackRF's higher cost is exactly why the discipline-only, one-unit-total model above still applies to them instead.
 
-`scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines, Kismet's `rtl433-sn-<serial>`/`ubertooth<N>` source lines) — check it before enabling a new service on a device that might already be spoken for.
+`scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines and live enabled/active state, OpenWebRX's live state, Kismet's `rtl433-sn-<serial>`/`ubertooth<N>` source lines), cross-matched against what's actually plugged in and flagging it if `radiod` and OpenWebRX are ever both active at once — check it before enabling a new service on a device that might already be spoken for. `scripts/service_toggle` is the companion tool that actually switches a device between `radiod` and OpenWebRX.
 
 ## Supported platforms
 

@@ -17,8 +17,13 @@
 ### It never assumes what SIGedge's own setup scripts think is enabled --
 ### every decision here is made by asking systemctl directly.
 ###
+### For a read-only view of current state (attached devices, configured
+### claims, and live enabled/active state for both sides, including a
+### conflict warning if they're ever both active at once), see
+### scripts/device-inventory.sh -- this script only switches, it doesn't
+### report.
+###
 ### Usage:
-###   scripts/service_toggle status
 ###   scripts/service_toggle ka9q-radio [mission ...]
 ###   scripts/service_toggle openwebrx
 ###   scripts/service_toggle off
@@ -27,8 +32,6 @@
 ###                   currently active service.
 ###   -n, --dry-run   Print what would be done without changing anything.
 ###
-###   status          Show enabled/active state of openwebrx.service and
-###                   every radiod@<mission>.service ka9q-radio owns.
 ###   ka9q-radio      Stop+disable openwebrx.service, then enable+start
 ###                   the named radiod@<mission> service(s). With no
 ###                   mission given, start every mission that has a
@@ -83,7 +86,7 @@ toggle_banner()
 
 usage()
 {
-    echo "Usage: ${BASH_SOURCE[0]} [-y|--yes] [-n|--dry-run] {status|ka9q-radio [mission ...]|openwebrx|off}"
+    echo "Usage: ${BASH_SOURCE[0]} [-y|--yes] [-n|--dry-run] {ka9q-radio [mission ...]|openwebrx|off}"
 }
 
 
@@ -101,7 +104,7 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=1
             shift
             ;;
-        status|ka9q-radio|openwebrx|off )
+        ka9q-radio|openwebrx|off )
             if [[ -n "$TARGET" ]]; then
                 toggle_error "Only one target may be given (already have '$TARGET')"
                 usage
@@ -199,7 +202,7 @@ require_privileges()
 # Every radiod@ mission systemd currently knows about, from any source:
 # a SIGedge-generated /etc/radio/radiod@<mission>.conf, or a unit that is
 # merely enabled, active, or loaded. Used when clearing ka9q-radio out of
-# the way for OpenWebRX and for status -- it must not miss anything just
+# the way for OpenWebRX (and for `off`) -- it must not miss anything just
 # because SIGedge itself didn't generate it.
 list_radiod_units()
 {
@@ -249,24 +252,6 @@ list_configured_missions()
         name="${name%.conf}"
         echo "$name"
     done
-}
-
-
-print_unit_state()
-{
-    local unit="$1"
-
-    if ! unit_exists "$unit"; then
-        printf '  %-32s not installed\n' "$unit"
-        return
-    fi
-
-    local enabled active
-    enabled="$(systemctl is-enabled "$unit" 2>/dev/null)"
-    [[ -z "$enabled" ]] && enabled="disabled"
-    active="$(systemctl is-active "$unit" 2>/dev/null)"
-    [[ -z "$active" ]] && active="inactive"
-    printf '  %-32s enabled=%-10s active=%s\n' "$unit" "$enabled" "$active"
 }
 
 
@@ -335,28 +320,6 @@ start_unit()
 ### ---------------------------------------------------------------------
 ### Actions
 ### ---------------------------------------------------------------------
-
-do_status()
-{
-    toggle_banner "Service status"
-
-    echo "OpenWebRX:"
-    print_unit_state "$OPENWEBRX_UNIT"
-
-    echo
-    echo "ka9q-radio radiod missions:"
-    local units
-    mapfile -t units < <(list_radiod_units)
-    if (( ${#units[@]} == 0 )); then
-        echo "  (none configured -- see scripts/cfg_ka9q-radio)"
-    else
-        local u
-        for u in "${units[@]}"; do
-            print_unit_state "$u"
-        done
-    fi
-}
-
 
 do_ka9q_radio()
 {
@@ -431,10 +394,6 @@ do_off()
 ### ---------------------------------------------------------------------
 
 case "$TARGET" in
-    status )
-        do_status || toggle_return 1
-        ;;
-
     ka9q-radio )
         require_privileges || toggle_return 1
         do_ka9q_radio || toggle_return 1

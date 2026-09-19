@@ -304,10 +304,10 @@ Stopping `radiod` releases the SDR for an explicitly selected direct-access serv
 
 ### Switching to or from OpenWebRX
 
-ka9q-radio and OpenWebRX (`packages/pkg_openwebrx`, `config/openwebrx.service`) are alternative deployments for the same SDR hardware and must not both be active. Rather than stopping/disabling each side by hand, use `scripts/service_toggle`, which discovers whichever `radiod@<mission>` instances are actually configured or running (it does not assume the reference missions above are the only ones), stops+disables the side being left, and verifies the result against `systemctl` rather than trusting prior state:
+ka9q-radio and OpenWebRX (`packages/pkg_openwebrx`, `config/openwebrx.service`) are alternative deployments for the same SDR hardware and must not both be active. Check current state first with `scripts/device-inventory.sh`, which shows attached devices, every radiod mission's and OpenWebRX's live enabled/active state, and flags it explicitly if both sides are ever active at once. Then switch with `scripts/service_toggle`, which discovers whichever `radiod@<mission>` instances are actually configured or running (it does not assume the reference missions above are the only ones), stops+disables the side being left, and verifies the result against `systemctl` rather than trusting prior state:
 
 ```bash
-scripts/service_toggle status                    # show current state of both sides
+scripts/device-inventory.sh                       # show current state of both sides (and what's attached)
 scripts/service_toggle ka9q-radio [mission ...]   # switch to ka9q-radio
 scripts/service_toggle openwebrx                  # switch to OpenWebRX
 scripts/service_toggle off                        # stop+disable both

@@ -59,18 +59,26 @@ Safely switches between ka9q-radio and OpenWebRX, which are alternative
 deployments for the same SDR hardware and must never both be active at
 once. Always stops+disables the side being switched away from before
 enabling+starting the other, verifying each step against `systemctl`
-rather than assuming prior state. Run directly, e.g.
-`scripts/service_toggle status` or `scripts/service_toggle ka9q-radio`;
+rather than assuming prior state. Switching only -- for current state,
+use `device-inventory.sh` below. Run directly, e.g.
+`scripts/service_toggle ka9q-radio` or `scripts/service_toggle openwebrx`;
 not part of the `SIGedge` parent-script dispatch.
 
 - **device-inventory.sh**
-Read-only tool: lists attached SDR/RF USB devices (RTL-SDR, HackRF,
-Ubertooth, RX-888) with their real USB serial numbers, side by side with
-whatever SIGedge configs currently claim each device -- `radiod`'s
-per-mission `serial =` line and Kismet's `rtl433-sn-<serial>` /
-`ubertooth<N>` source lines in `kismet_site.conf`. Answers "what's
-attached and what already claims it" without resolving conflicts itself;
-see [README.md](../README.md)'s device-ownership section for the actual
+Read-only tool, and the one place to see the full picture: what's
+physically attached, what already claims it, and whether that claim is
+actually live right now. Lists attached SDR/RF USB devices (RTL-SDR,
+HackRF, Ubertooth, RX-888) with their real USB serial numbers, side by
+side with whatever SIGedge configs currently claim each device --
+`radiod`'s per-mission `serial =` line (plus each mission's live
+systemd enabled/active state) and Kismet's `rtl433-sn-<serial>` /
+`ubertooth<N>` source lines in `kismet_site.conf` -- cross-matched
+against what's actually plugged in, and flags it if a radiod mission and
+OpenWebRX are ever both active at once (the one conflict that actually
+matters). Answers "what's attached, what claims it, and is that claim
+live" without switching anything itself -- use `service_toggle` above to
+actually move a device between radiod and OpenWebRX; see
+[README.md](../README.md)'s device-ownership section for the actual
 one-owner-per-device policy. No arguments, no sudo required: `./scripts/device-inventory.sh`.
 
 ## Environment support
