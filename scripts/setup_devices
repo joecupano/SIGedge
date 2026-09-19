@@ -22,64 +22,94 @@ echo -e "${SIGEDGE_BANNER_RESET}"
 sudo apt-get install -y libusb-1.0-0-dev soapysdr-tools libsoapysdr-dev
 
 # SoapySDDC for the optional direct-access RX-888 path.
+#
+# OpenWebRX+ (packages/pkg_openwebrx; see KA9Q-DEPLOYMENT.md's "RX-888 in
+# OpenWebRX+" section) is the only consumer of this module on a SIGedge
+# node -- ka9q-radio's own RX-888 support (devices/pkg_rx888) stages FX3
+# firmware directly and never goes through SoapySDR. This used to build
+# renardspark/SDDC_Driver, a different fork of the same upstream ik1xpv/SDDC
+# lineage: both forks register an identical SoapySDR module name
+# (SDDCSupport -> libSDDCSupport.so) at the identical install path, so only
+# one can ever be present at a time -- and confirmed on real hardware that
+# renardspark's build is NOT interchangeable with OpenWebRX+'s soapy_connector
+# (crashes on gain handling). ON5HB/RX888MK2-Soapy is the fork actually
+# validated end-to-end with OpenWebRX+ and the RX-888, so build that one.
 cd "$SIGEDGE_SOURCE" || return 1
-if [[ ! -d SDDC_Driver/.git ]]; then
-    git clone https://github.com/renardspark/SDDC_Driver.git || return 1
+if [[ ! -d RX888MK2-Soapy/.git ]]; then
+    git clone https://github.com/ON5HB/RX888MK2-Soapy.git || return 1
 fi
 
-# Upstream's CPU-detection regex only matches "arm.*", which misses the
-# "aarch64" CMAKE_SYSTEM_PROCESSOR reported on 64-bit Raspberry Pi OS (and
-# Apple Silicon Linux), so the build aborts with "Unable to identify CPU".
-# Patch it in until upstream fixes it; safe to re-run.
-if ! grep -q 'aarch64' SDDC_Driver/Core/CMakeLists.txt; then
-    sed -i 's/MATCHES "arm\.\*"/MATCHES "(arm|aarch64).*"/' SDDC_Driver/Core/CMakeLists.txt
-fi
-
-# HWCAP_NEON is only defined for 32-bit ARM; on aarch64 (64-bit Pi OS, Apple
-# Silicon Linux) NEON/Advanced SIMD is mandatory and reported as HWCAP_ASIMD
-# instead, so detect_neon() fails to compile as shipped. Patch it in until
-# upstream fixes it; safe to re-run.
-if ! grep -q 'HWCAP_ASIMD' SDDC_Driver/Core/fft_mt_r2iq/fft_mt_r2iq.cpp; then
+# Same aarch64 gap as the fork this replaced, upstream here too:
+# CMakeLists.txt's CPU check only matches 32-bit "arm.*" (CMAKE_SYSTEM_PROCESSOR
+# reports "aarch64" on 64-bit Raspberry Pi OS/Apple Silicon Linux, so it never
+# matches) and unconditionally passes -mfpu=neon-vfpv4 -- an AArch32-only flag
+# neither GCC nor Clang accept on aarch64. A dedicated 64-bit-ARM branch ahead
+# of the existing one (rather than widening its regex) since NEON is
+# mandatory -- no -mfpu flag needed -- on aarch64, but optional -- flag
+# required -- on 32-bit arm. Safe to re-run.
+if ! grep -q 'aarch64|arm64' Core/CMakeLists.txt; then
     python3 - <<'EOF'
 from pathlib import Path
-p = Path("SDDC_Driver/Core/fft_mt_r2iq/fft_mt_r2iq.cpp")
-old = "\t\tunsigned long caps = getauxval(AT_HWCAP);\n\t\treturn (caps & HWCAP_NEON);\n"
+p = Path("Core/CMakeLists.txt")
+old = '  elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "arm.*")\n'
 new = (
-    "\t\tunsigned long caps = getauxval(AT_HWCAP);\n"
-    "#if defined(__aarch64__)\n"
-    "\t\treturn (caps & HWCAP_ASIMD);\n"
-    "#else\n"
-    "\t\treturn (caps & HWCAP_NEON);\n"
-    "#endif\n"
+    '  elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$")\n'
+    '    # 64-bit ARM: NEON/Advanced SIMD is mandatory in the ISA; -mfpu is\n'
+    '    # an AArch32-only flag neither GCC nor Clang accept here.\n'
+    '    message(STATUS "Compiling for Neon (aarch64)")\n'
+    '    list(FILTER SRC EXCLUDE REGEX "fft_mt_r2iq_avx.*")\n'
+    '    list(APPEND SRC fft_mt_r2iq_neon.cpp)\n'
+    '    set_source_files_properties(pffft/pf_mixer.cpp PROPERTIES COMPILE_FLAGS "-D PFFFT_ENABLE_NEON -Wno-strict-aliasing")\n'
+    '  elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "arm.*")\n'
 )
 text = p.read_text()
-assert old in text, "SDDC_Driver detect_neon() patch target not found; upstream may have changed"
+assert old in text, "RX888MK2-Soapy CPU-detect patch target not found; upstream may have changed"
 p.write_text(text.replace(old, new, 1))
 EOF
     [[ $? -eq 0 ]] || return 1
 fi
 
-# '-mfpu=' is an AArch32-only GCC/Clang flag: on 64-bit ARM (aarch64/arm64)
-# NEON/Advanced SIMD is mandatory in the ISA and neither compiler accepts
-# that flag there. Upstream only skips it for APPLE (Apple Silicon clang),
-# so it still breaks the GCC build on 64-bit Raspberry Pi OS. Key the check
-# off the CPU being 64-bit ARM instead; safe to re-run.
-if ! grep -q 'aarch64|arm64' SDDC_Driver/Core/CMakeLists.txt; then
+# Companion runtime check, same gap: keyed off __arm__ (32-bit) only, no
+# __aarch64__ branch -- falls through to '#error Compiler does not identify
+# an x86 or ARM core..' on 64-bit ARM otherwise. Safe to re-run.
+if ! grep -q '__aarch64__' Core/fft_mt_r2iq.cpp; then
     python3 - <<'EOF'
 from pathlib import Path
-p = Path("SDDC_Driver/Core/CMakeLists.txt")
-old = '    if(APPLE)\n'
-new = '    if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "^(aarch64|arm64)$")\n'
+p = Path("Core/fft_mt_r2iq.cpp")
+old = "#elif defined(__arm__)\n"
+new = (
+    "#elif defined(__aarch64__)\n"
+    "\t#define DETECT_NEON\n"
+    "\t#include <sys/auxv.h>\n"
+    "\t#include <asm/hwcap.h>\n"
+    "\tstatic bool detect_neon()\n"
+    "\t{\n"
+    "\t\tunsigned long caps = getauxval(AT_HWCAP);\n"
+    "\t\treturn (caps & HWCAP_ASIMD);\n"
+    "\t}\n"
+    "#elif defined(__arm__)\n"
+)
 text = p.read_text()
-assert old in text, "SDDC_Driver -mfpu patch target not found; upstream may have changed"
+assert old in text, "RX888MK2-Soapy detect_neon() patch target not found; upstream may have changed"
 p.write_text(text.replace(old, new, 1))
 EOF
     [[ $? -eq 0 ]] || return 1
 fi
 
-cmake -S SDDC_Driver -B SDDC_Driver/build -DCMAKE_BUILD_TYPE=Release || return 1
-cmake --build SDDC_Driver/build -j"$(nproc)" || return 1
-sudo cmake --install SDDC_Driver/build || return 1
+# Build/install only the SoapySDR module itself (SDDCSupport, which pulls in
+# the static SDDC_CORE it depends on) -- NOT the default "all" target. That
+# set includes `unittest`, which fetches a third-party LIBCPPUNIT header via
+# CMake's ExternalProject; that header is missing '#include <cstdint>' and
+# fails to compile under GCC 14 (same class of bug already patched around
+# elsewhere in packages/pkg_openwebrx). Skipping it avoids an unrelated test
+# target breaking every future `SIGedge setup` run. Installing this
+# subdirectory's own cmake_install.cmake directly, rather than the top-level
+# one, likewise avoids failing on OTHER never-built targets (the standalone
+# `sddc` library, `wavewriter`, the *_test binaries) that a plain
+# `cmake --install build` would also try to install.
+cmake -S RX888MK2-Soapy -B RX888MK2-Soapy/build -DCMAKE_BUILD_TYPE=Release || return 1
+cmake --build RX888MK2-Soapy/build -j"$(nproc)" --target SDDCSupport || return 1
+sudo cmake -P RX888MK2-Soapy/build/SoapySDDC/cmake_install.cmake || return 1
 sudo ldconfig
 
 # SoapyRemote plumbing is installed. No SoapySDRServer unit is enabled here.

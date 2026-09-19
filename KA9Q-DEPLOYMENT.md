@@ -336,12 +336,19 @@ alternative, validated end-to-end on rubberduck:
    of `./SIGedge install openwebrx`. This is the same approach
    `~/sovereign-sigint/scripts/phase6-openwebrx.sh` uses.
 2. RX-888 support comes from OpenWebRX+'s `soapy_sddc` feature, backed by
-   a SoapySDR module built from **`ON5HB/RX888MK2-Soapy`**
-   (`SOAPYSDDC_REPO` in `~/sovereign-sigint/scripts/phase6-openwebrx-rx888.sh`)
-   — CPU-only, no CUDA, no `sddc_connector`. SIGedge's own `SDDC_Driver`
-   device package (`devices/pkg_rx888`) builds a different SDDC SoapySDR
-   module for its own direct-access purposes; the two are not
-   interchangeable in practice — use the ON5HB build for OpenWebRX+.
+   a SoapySDR module built from **`ON5HB/RX888MK2-Soapy`** — CPU-only, no
+   CUDA, no `sddc_connector`. `scripts/setup_devices` builds and installs
+   this automatically (as part of any `SIGedge setup` run), so nothing to
+   build by hand here. It previously built `renardspark/SDDC_Driver`
+   instead — a different fork of the same upstream ik1xpv/SDDC lineage
+   that happens to register an identical SoapySDR module name
+   (`SDDCSupport` -> `libSDDCSupport.so`) at the identical install path.
+   Confirmed on real hardware that fork is NOT interchangeable with
+   OpenWebRX+'s `soapy_connector` (crashes on gain handling) — switched to
+   ON5HB's fork, the one actually validated end-to-end here, since
+   OpenWebRX+ is this node's only consumer of this module (ka9q-radio's
+   own RX-888 support, `devices/pkg_rx888`, stages FX3 firmware directly
+   and never goes through SoapySDR at all).
 3. Add the `openwebrx` system user to the **`radio`** group
    (`sudo usermod -aG radio openwebrx`, then restart the service). The
    RX-888 enumerates as `04b4:00f3` (DFU/unprogrammed) before firmware
