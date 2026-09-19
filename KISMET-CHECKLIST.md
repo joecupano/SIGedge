@@ -2,9 +2,7 @@
 
 For how to actually build, install, and configure Kismet, see
 [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md) -- this file tracks validation
-status and open items only, the same relationship
-[PROJECT_STATE.md](PROJECT_STATE.md) has to
-[KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md).
+status and open items only.
 
 Working checklist for what's left on `packages/pkg_kismet` after the
 initial rewrite (`ac473e9`) and the hardware-validation bugfix pass

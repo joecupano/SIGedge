@@ -2,7 +2,7 @@
 
 Feeds `radiod@hackrf-aprs`'s demodulated FM audio into `direwolf` for
 AX.25/APRS decoding, instead of leaving that multicast group unread. See
-the top-level README's [ka9q-radio section](../../README.md#ka9q-radio--shared-radio-server)
+the top-level README's [ka9q-radio section](../../README.md#ka9q-radio-shared-radio-server)
 for the "decoders" branch this fills in.
 
 ## How it works

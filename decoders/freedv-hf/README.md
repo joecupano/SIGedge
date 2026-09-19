@@ -18,7 +18,7 @@ that channel yourself before this bridge has anything to decode.
 1. **A `radiod` channel demodulating USB on an HF frequency carrying
    FreeDV traffic.** Use `scripts/cfg_ka9q-radio_tui` to add one — it's
    the tool for missions beyond the three fixed reference templates (see
-   [scripts/README.md](../../scripts/README.md#cfg_ka9q-radio_tui) for
+   [scripts/README.md](../../scripts/README.md) for
    why `cfg_ka9q-radio` itself can't do this). **14.236 MHz USB** is the
    commonly used international FreeDV calling frequency and a reasonable
    starting point on an HF-capable front end (RX-888); it's a convention,

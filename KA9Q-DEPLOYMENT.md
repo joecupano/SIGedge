@@ -22,7 +22,7 @@ An SDR must have only one active owner. Do not run `radiod` and a direct-access 
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
 | Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
 | Radio mission configuration (TUI) | `scripts/cfg_ka9q-radio_tui` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control. Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
-| Reference configurations | `config/radiod@*.EXAMPLE` | Shows the current generated configuration shape |
+| Reference configurations | `config/radiod@<instance>.conf` | Shows the current generated configuration shape |
 | ka9q-radio / OpenWebRX switch | `scripts/service_toggle` | Safely switches between ka9q-radio radiod missions and OpenWebRX, always stopping+disabling the side being left before starting the other |
 
 Package installation and radio mission configuration are intentionally separate. Installing ka9q-radio does not create or start a radio-specific `radiod` instance.
@@ -325,8 +325,7 @@ alternative, validated end-to-end on rubberduck:
 
 > As of 2026-09, `packages/pkg_openwebrx`'s general build/install chain
 > itself is fixed and verified working on arm64/Debian Trixie (GCC 14),
-> where it previously failed outright -- see [PROJECT_STATE.md](PROJECT_STATE.md)
-> for the three specific bugs and fixes. That does not change the
+> where it previously failed outright. That does not change the
 > `sddc_connector` gap above: RX-888 support specifically is still
 > unavailable through this path, so the PPA route below remains the one
 > to use for that device.

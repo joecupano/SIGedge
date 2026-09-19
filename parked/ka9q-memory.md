@@ -1,8 +1,9 @@
 # ka9q-radio Expertise Archive
 
 Reference notes distilled from the upstream repo while building
-[install_ka9q-radio.sh](install_ka9q-radio.sh) and
-[ka9q-radio-config-gen.sh](ka9q-radio-config-gen.sh) in this directory.
+`install_ka9q-radio.sh` (since removed from this directory; superseded by
+`devices/pkg_rx888` and `packages/pkg_ka9q-radio` in the main tree) and
+[ka9q-radio-config-gen.sh](ka9q-radio-config-gen.sh), which is still here.
 Everything below was pulled from the project's own docs/config files (cited
 per section), not guessed — use it as ground truth for other ka9q-radio work
 instead of re-deriving it. Upstream: https://github.com/ka9q/ka9q-radio
@@ -261,10 +262,12 @@ channels = 1
 
 ## Tooling produced this session (this repo)
 
-- [install_ka9q-radio.sh](install_ka9q-radio.sh) — bootstrap installer for
-  Ubuntu 24.04 (build deps, clone+build ka9q-radio, `radio` group, config
-  dirs). Runs as a normal sudo-capable user (refuses to run as root itself)
-  and escalates only the individual steps that need it via `sudo`.
+- `install_ka9q-radio.sh` (no longer present in this directory) — bootstrap
+  installer for Ubuntu 24.04 (build deps, clone+build ka9q-radio, `radio`
+  group, config dirs). Ran as a normal sudo-capable user (refused to run as
+  root itself) and escalated only the individual steps that needed it via
+  `sudo`. Its job is now done by `devices/pkg_rx888` and
+  `packages/pkg_ka9q-radio` — see [KA9Q-DEPLOYMENT.md](../KA9Q-DEPLOYMENT.md).
 - [ka9q-radio-config-gen.sh](ka9q-radio-config-gen.sh) — interactive wizard
   that generates a real `radiod@<name>.conf`: walks `[global]`, the correct
   per-device hardware section (all 10 device types above, field-accurate),

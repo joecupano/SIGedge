@@ -116,69 +116,33 @@ collide even though they share those pools.
 
 ## Example
 
+`config/radiod@rx888-wwv.conf`, one of the three actual reference missions
+from the table above, applying this scheme exactly: `dns = yes`, `status`
+left as the `sigedge-<hardware>.local` name (resolved via the `/etc/hosts`
+entry `scripts/cfg_ka9q-radio` manages), `data` checked in as the literal
+address directly. `##TTL##`/`##IFACE##`/`##SERIAL##` are the only lines
+`scripts/cfg_ka9q-radio` fills in per host; everything else is deployed
+as-is.
+
 ```
 [global]
 hardware = rx888
-
-# Status/Control name
+dns = yes
 status = sigedge-rx888.local
-
-# Force multicast onto the SDR data-plane interface
-iface = eno1
-
-#  1 - Keep multicast to local LAN, 0 - local to box
-ttl = 1
-fft-threads = 2
+mode = am
+ttl = ##TTL##
+data = 239.192.64.10
+##IFACE##
 
 [rx888]
 device = rx888
-description = "SIGedge RX888 HF"
-
-# Half-rate operation covers HF through 30 MHz and reduces host
-# load substantially compared to 129.6 MS/s.
+description = "SIGedge RX-888 WWV 10 MHz"
 samprate = 64800000
-gain = 0
+firmware = SDDC_FX3.img
+##SERIAL##
 
-[WWV-10-IQ]
-disable = no
-freq = "10m000000"
-mode = iq
-samprate = 16000
-encoding = float
-data = sigedge-wwv10-iq.local
-agc = 0
-gain = 0
-
-[FT8-20M]
-disable = no
-freq = "14m074000"
-mode = usb
-samprate = 12000
-encoding = float
-data = sigedge-ft8-20m.local
-
-# Pass normal FT8 audio range with some margin
-low = 100
-high = 3500
-
-agc = 0
-gain = 0
-
-[CW-30M]
-disable = no
-freq = "10m106000"
-mode = cw
-samprate = 12000
-encoding = float
-data = sigedge-cw-30m.local
-
-# Narrow CW audio passband
-low = 300
-high = 1200
-
-agc = 1
-gain = 0
-
+[wwv-10mhz]
+freq = "10m0"
 ```
 
 **SSRC and Frequency Overlap**
