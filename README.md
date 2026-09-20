@@ -14,11 +14,11 @@ The three devices used throughout this documentation's reference examples:
 | HackRF One | Wideband TX/RX |
 | RTL-SDR (v3/v4) | Low-cost VHF/UHF receiver |
 
-Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: BladeRF, Ettus Research USRP (UHD), RigExpert Fobos, KerberosSDR, LimeSDR, PlutoSDR, and SDRplay — plus Ubertooth One, a Bluetooth/BLE capture device used with Kismet rather than an RF receiver in the SDR sense. Run `SIGedge list library` for the full, current package list.
+Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: **BladeRF**, **Ettus Research USRP (UHD)**, **RigExpert Fobos**, **KerberosSDR**, **LimeSDR**, **PlutoSDR**, and **SDRplay** — plus **Ubertooth One**, a Bluetooth/BLE capture device used with Kismet rather than an RF receiver in the SDR sense. Run `SIGedge list library` for the full, current package list.
 
 ## From a dedicated SDR app to a shared radio platform
 
-The apps in the SDR world you already know — SDRangel, GQRX, CubicSDR, `rtl_tcp`, `hackrf_transfer` — all work the same way: one app opens the radio directly, either locally or over the network via SoapyRemote, and has it exclusively for as long as it's running. SIGedge supports that model exactly as-is; nothing about it changes.
+The apps in the SDR world you already know — **SDRangel**, **GQRX**, **CubicSDR**, **rtl_tcp**, **hackrf_transfer** — all work the same way: one app opens the radio directly, either locally or over the network via SoapyRemote, and has it exclusively for as long as it's running. SIGedge supports that model exactly as-is; nothing about it changes.
 
 What SIGedge adds is a second model. Instead of one app owning the radio, a background service called `radiod` (from the [ka9q-radio](https://github.com/ka9q/ka9q-radio) project) owns it once, continuously, and republishes its IQ/audio/control data as an IP multicast network stream — so any number of consumers (other apps, other hosts, browser sessions, recorders, an AI pipeline) can listen to the *same* radio at the same time, without any of them opening the USB device themselves.
 
@@ -75,7 +75,7 @@ Each of the following runs on top of one of the two models above. This section c
 
 **Delivers:** passive monitoring and device-tracking for WiFi, Bluetooth, and ISM-band RF traffic — a different job than tuning a signal by hand, closer to a network/RF security tool than a receiver app.
 
-**How it fits together:** a protocol-layer service that runs *alongside* `radiod`/OpenWebRX+, not an alternative to either. It needs its own WiFi adapter (monitor-mode capable) and, optionally, its own RTL-SDR (rtl433) or Ubertooth unit for ISM-band and Bluetooth capture.
+**How it fits together:** a protocol-layer service that runs *alongside* `radiod`/OpenWebRX+, not an alternative to either. It needs its own WiFi adapter (monitor-mode capable) and, optionally, its own **RTL-SDR (rtl433)** or **Ubertooth** unit for ISM-band and Bluetooth capture.
 
 **Setup:** full build/install, capture-source configuration, and troubleshooting are in [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md).
 
