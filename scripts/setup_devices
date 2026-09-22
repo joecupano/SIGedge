@@ -44,8 +44,8 @@ if grep -qx 'rx888' "$SIGEDGE_INSTALLED_DEVICES"; then
     # Pinned to the commit this was actually validated against on real
     # hardware (rubberduck, 2026-09): build, install, and live OpenWebRX+
     # RX-888 streaming all confirmed working at exactly this commit. Matches
-    # pkg_kismet's KISMET_REF / pkg_ka9q-radio's KA9Q_RADIO_REF precedent: a
-    # moving upstream default is a real risk, not a hypothetical one --
+    # pkg_ka9q-radio's KA9Q_RADIO_REF precedent: a moving upstream default
+    # is a real risk, not a hypothetical one --
     # ON5HB/RX888MK2-Soapy has no tagged releases to pin to instead. Override
     # with RX888MK2SOAPY_REF=main to track tip, or another ref, if you need
     # something newer -- just re-validate before trusting it the way this
@@ -196,10 +196,6 @@ fi
 
 if grep -qx 'sdrplay' "$SIGEDGE_INSTALLED_DEVICES"; then
     source "$SIGEDGE_DEVICES/pkg_sdrplay" install || return 1
-fi
-
-if grep -qx 'ubertooth' "$SIGEDGE_INSTALLED_DEVICES"; then
-    source "$SIGEDGE_DEVICES/pkg_ubertooth" install || return 1
 fi
 
 echo -e "${SIGEDGE_BANNER_COLOR}"

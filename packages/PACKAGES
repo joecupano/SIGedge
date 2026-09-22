@@ -11,8 +11,6 @@ ggmorse,1.0,1.0,Morse code decoding library,20260124
 gpsd,3.2.2,3.2.2,interface daemon for GPS receivers,20260113
 inmarsatc,1.0,1.0,Cplusplus library with functions to receive Inmarsat-C signals,20260124
 ka9q-radio,main,main,Multichannel SDR service using IP multicast,20260828
-kismet,master,master,Wired and wireless network sniffer for Wi-Fi Bluetooth Zigbee,20260906
-libbtbb,2020-12-R1,20-12-R1,Bluetooth baseband decoding library,20211231
 libdab,1.0,1.0,DAB decoding library,20211231
 libsigmf,1.0.2,1.0,header-only C++ library for working with SigMF metadata,20211231
 mbelib,1.0,1.0,P25 Phase 1 and ProVoice vocoder,20211231

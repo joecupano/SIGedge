@@ -14,7 +14,7 @@ The three devices used throughout this documentation's reference examples:
 | HackRF One | Wideband TX/RX |
 | RTL-SDR (v3/v4) | Low-cost VHF/UHF receiver |
 
-Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: **BladeRF**, **Ettus Research USRP (UHD)**, **RigExpert Fobos**, **KerberosSDR**, **LimeSDR**, **PlutoSDR**, and **SDRplay** — plus **Ubertooth One**, a Bluetooth/BLE capture device rather than an RF receiver in the SDR sense. Run `SIGedge list library` for the full, current package list.
+Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: **BladeRF**, **Ettus Research USRP (UHD)**, **RigExpert Fobos**, **KerberosSDR**, **LimeSDR**, **PlutoSDR**, and **SDRplay**. Run `SIGedge list library` for the full, current package list.
 
 ## From a dedicated SDR app to a shared radio platform
 

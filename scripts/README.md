@@ -68,7 +68,7 @@ not part of the `SIGedge` parent-script dispatch.
 Read-only tool, and the one place to see the full picture: what's
 physically attached, what already claims it, and whether that claim is
 actually live right now. Lists attached SDR/RF USB devices (RTL-SDR,
-HackRF, Ubertooth, RX-888) with their real USB serial numbers, side by
+HackRF, RX-888) with their real USB serial numbers, side by
 side with whatever SIGedge configs currently claim each device --
 `radiod`'s per-mission `serial =` line (plus each mission's live
 systemd enabled/active state), OpenWebRX's live enabled/active state,

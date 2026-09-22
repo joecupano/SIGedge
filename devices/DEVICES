@@ -14,4 +14,3 @@ rx888mk2-soapy,main,main,RX-888 SoapySDR module (OpenWebRX+ direct access),20260
 rtlsdr,1.0,1.0,RTLSDR v3,20240101
 rtlsdrv4,1.0,1.0,RTLSDR v4,20240101
 sdrplay,3.15.2,3.15.2,SDRplay,20250716
-ubertooth,2020-12-R1,2020-12-R1,Ubertooth platform,20211231

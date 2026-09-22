@@ -4,8 +4,8 @@
 #
 # The one place to answer "what SDR/RF hardware is attached, what already
 # claims it, and is that claim actually live right now". Lists attached
-# SDR/RF USB devices (RTL-SDR, HackRF, Ubertooth, RX-888) with their real
-# USB serial numbers, side by side with:
+# SDR/RF USB devices (RTL-SDR, HackRF, RX-888) with their real USB serial
+# numbers, side by side with:
 #   - radiod's per-mission `serial =` line (scripts/cfg_ka9q-radio's
 #     RTLSDR_SERIAL/HACKRF_SERIAL/RX888_SERIAL) plus each mission's live
 #     systemd enabled/active state, cross-matched against what's actually
@@ -14,8 +14,6 @@
 #     service, not per-mission, and its own device selection lives in
 #     /var/lib/openwebrx/settings.json via its web UI, not a SIGedge
 #     config -- out of scope to parse here)
-#   - Kismet's rtl433-sn-<serial> / ubertooth<N> source= lines in
-#     kismet_site.conf, cross-matched the same way where a serial is given
 #   - RTL-TCP server's RTLTCP_SERIAL override (see config/rtltcp.service),
 #     cross-matched the same way
 # and flags the one conflict that can be confirmed: a radiod mission and
@@ -84,21 +82,19 @@ declare -A DEVICE_LABELS=(
     ["0bda:2838"]="RTL-SDR (RTL2838)"
     ["0bda:2832"]="RTL-SDR (RTL2832U)"
     ["1d50:6089"]="HackRF One"
-    ["1d50:6002"]="Ubertooth One"
     ["04b4:00f1"]="RX-888 MkII (firmware loaded)"
     ["04b4:00f3"]="RX-888 MkII (DFU mode -- needs firmware upload)"
 )
 
 # Groups the VID:PID table above into the coarser "kind" that radiod's
-# `hardware =` value and Kismet's/RTL-TCP's serial claims both refer to,
-# so an attached unit can be cross-matched against a claimed serial
-# regardless of which exact VID:PID (loaded vs DFU, RTL2838 vs RTL2832U)
-# it currently shows.
+# `hardware =` value and RTL-TCP's serial claims both refer to, so an
+# attached unit can be cross-matched against a claimed serial regardless
+# of which exact VID:PID (loaded vs DFU, RTL2838 vs RTL2832U) it currently
+# shows.
 declare -A DEVICE_KIND=(
     ["0bda:2838"]="rtlsdr"
     ["0bda:2832"]="rtlsdr"
     ["1d50:6089"]="hackrf"
-    ["1d50:6002"]="ubertooth"
     ["04b4:00f1"]="rx888"
     ["04b4:00f3"]="rx888"
 )
@@ -221,14 +217,6 @@ unit_is_active "$OPENWEBRX_UNIT" && OPENWEBRX_ACTIVE=1
 SDRANGELSRV_ACTIVE_STR="$(unit_active_str "$SDRANGELSRV_UNIT")"
 SOAPYSDRSRV_ACTIVE_STR="$(unit_active_str "$SOAPYSDRSRV_UNIT")"
 
-KISMET_SOURCES=()
-if [[ -f /usr/local/etc/kismet_site.conf ]]; then
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        KISMET_SOURCES+=("$line")
-    done < <(grep -E '^source=' /usr/local/etc/kismet_site.conf 2>/dev/null)
-fi
-
 RTLTCP_SERIAL=""
 if [[ -f "$RTLTCP_ENV_FILE" ]]; then
     RTLTCP_SERIAL="$(grep -m1 -E '^\s*RTLTCP_SERIAL\s*=' "$RTLTCP_ENV_FILE" 2>/dev/null | sed -E 's/.*=\s*//')"
@@ -298,14 +286,6 @@ print_json() {
 
     printf '    "openwebrx": {"enabled": "%s", "active": "%s"},\n' \
         "$(json_escape "$OPENWEBRX_ENABLED")" "$(json_escape "$OPENWEBRX_ACTIVE_STR")"
-
-    echo '    "kismet_sources": ['
-    for i in "${!KISMET_SOURCES[@]}"; do
-        printf '      %s%s\n' \
-            "$(json_str_or_null "${KISMET_SOURCES[$i]}")" \
-            "$([[ $i -lt $((${#KISMET_SOURCES[@]} - 1)) ]] && echo ',')"
-    done
-    echo '    ],'
 
     printf '    "rtltcp": {"env_file": "%s", "serial": %s, "serial_attached": %s},\n' \
         "$(json_escape "$RTLTCP_ENV_FILE")" "$(json_str_or_null "$RTLTCP_SERIAL")" "$(json_str_or_null "$RTLTCP_ATTACHED")"
@@ -402,29 +382,6 @@ echo "   'inactive' does NOT mean a device is free if one of these is stopped-bu
 echo "   still-configured against it. See this script's own header comment.)"
 echo
 
-echo "-- Kismet (/usr/local/etc/kismet_site.conf) --"
-if [[ ! -f /usr/local/etc/kismet_site.conf ]]; then
-    echo "  (kismet_site.conf not installed on this host)"
-elif [[ ${#KISMET_SOURCES[@]} -eq 0 ]]; then
-    echo "  (no active source= lines)"
-else
-    for src in "${KISMET_SOURCES[@]}"; do
-        echo "  $src"
-        if [[ "$src" =~ ^source=rtl433-sn-([^:]+) ]]; then
-            serial="${BASH_REMATCH[1]}"
-            if serial_attached "rtlsdr" "$serial"; then
-                echo "      -> serial $serial is currently attached"
-            else
-                echo "      -> serial $serial is NOT currently attached -- this source will fail to open its device"
-            fi
-        elif [[ "$src" =~ ^source=ubertooth[0-9]+ ]]; then
-            count="${ATTACHED_COUNT[ubertooth]:-0}"
-            echo "      -> selects by index, not serial; $count Ubertooth device(s) currently attached"
-        fi
-    done
-fi
-echo
-
 echo "-- RTL-TCP server ($RTLTCP_ENV_FILE) --"
 if [[ -n "$RTLTCP_SERIAL" ]]; then
     echo "  RTLTCP_SERIAL=$RTLTCP_SERIAL"
@@ -439,15 +396,15 @@ fi
 echo
 
 echo "== Reading this =="
-echo "An 'unpinned' radiod mission, RTL-TCP server, or a Kismet source with no"
-echo "serial/index constraint will grab whichever matching device it finds first."
+echo "An 'unpinned' radiod mission or RTL-TCP server with no serial constraint will"
+echo "grab whichever matching device it finds first."
 echo ""
 echo "This is fine with exactly ONE unit of that device type attached but a real collision"
 echo "risk with more than one of that device attached."
 echo ""
 echo "Pin by serial"
-echo "(radiod: RTLSDR_SERIAL= to scripts/cfg_ka9q-radio; Kismet: rtl433-sn-<serial> in"
-echo "kismet_site.conf; RTL-TCP: RTLTCP_SERIAL= in $RTLTCP_ENV_FILE)"
+echo "(radiod: RTLSDR_SERIAL= to scripts/cfg_ka9q-radio; RTL-TCP: RTLTCP_SERIAL= in"
+echo "$RTLTCP_ENV_FILE)"
 echo "whenever two always-on consumers need the same device type."
 echo ""
 echo "enabled=/active= reflects live systemd state, not just what's configured -- a mission's"

@@ -74,7 +74,7 @@ select_startscreen(){
 
 select_services_intro(){
     TERM=ansi whiptail --title "Services Setup" --clear --msgbox \
-        "Next: choose services. Two of them are alternatives for the SAME radio, never both at once on one device:\n\n  - ka9q-radio shares a radio over the network to any number of consumers.\n  - OpenWebRX / RTL-TCP / SDRangel / SoapySDR Server each give ONE app exclusive access instead, same as plugging that radio straight into it.\n\nKismet is different -- it runs alongside either choice, on its own WiFi/RTL-SDR/Ubertooth sources.\n\nEverything installs disabled; you enable a specific service for a specific device afterward." 20 80
+        "Next: choose services. These are alternatives for the SAME radio, never both at once on one device:\n\n  - ka9q-radio shares a radio over the network to any number of consumers.\n  - OpenWebRX / RTL-TCP / SDRangel / SoapySDR Server each give ONE app exclusive access instead, same as plugging that radio straight into it.\n\nEverything installs disabled; you enable a specific service for a specific device afterward." 20 80
 }
 
 select_devices() {
@@ -90,7 +90,6 @@ select_devices() {
         "limesuite" "LimeSDR " OFF \
         "plutosdr" "PlutoSDR " OFF \
         "sdrplay" "SDRPlay " OFF \
-        "ubertooth" "Ubertooth One" OFF \
         3>&1 1>&2 2>&3)
     RET=$?
     if [ $RET -eq 1 ]; then
@@ -106,10 +105,9 @@ select_devices() {
 
 select_services() {
     FUN=$(whiptail --title "Services Installation" --clear --checklist --separate-output \
-        "Choose which services to install (see previous screen: pick ONE per radio between ka9q-radio and the direct-access services below; Kismet runs alongside either)" 20 120 12 \
+        "Choose which services to install (see previous screen: pick ONE per radio between ka9q-radio and the direct-access services below)" 20 120 12 \
         "ka9q-radio" "KA9Q-Radio -- shared radio server (multicast)" OFF \
         "openwebrx" "OpenWebRX -- browser waterfall (direct access, alt. to ka9q-radio)" OFF \
-        "kismet" "Kismet -- WiFi/BT protocol monitor (runs alongside)" OFF \
         "rtltcpsrv" "RTL-TCP Server (direct access, alt. to ka9q-radio)" OFF \
         "sdrangelsrv" "SDRangel Server (direct access, alt. to ka9q-radio)" OFF \
         "soapysdrsrv" "SoapySDR Server (direct access, alt. to ka9q-radio)" OFF \
