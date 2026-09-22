@@ -72,8 +72,7 @@ HackRF, Ubertooth, RX-888) with their real USB serial numbers, side by
 side with whatever SIGedge configs currently claim each device --
 `radiod`'s per-mission `serial =` line (plus each mission's live
 systemd enabled/active state), OpenWebRX's live enabled/active state,
-Kismet's `rtl433-sn-<serial>` / `ubertooth<N>` source lines in
-`kismet_site.conf`, and RTL-TCP server's `RTLTCP_SERIAL` override
+and RTL-TCP server's `RTLTCP_SERIAL` override
 (`/etc/default/rtltcp`, see `config/rtltcp.service`) -- cross-matched
 against what's actually plugged in, and flags it if a radiod mission and
 OpenWebRX are ever both active at once (the one conflict that can

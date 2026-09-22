@@ -2,7 +2,7 @@
 
 If you've plugged an RTL-SDR or a HackRF straight into SDRangel, GQRX, CubicSDR, or a similar app and listened to the world go by, you already understand the core of what SIGedge does — it just gives that same radio, and others like it, two more ways to work: as a browser-based receiver anyone on the network can open, and as a radio *server* that many apps and services can share at once instead of one app locking up the USB device by itself.
 
-SIGedge is an RF edge platform: it takes SDR hardware attached to one host and makes it usable — as raw IQ or already-demodulated audio — by upstream services on that host or across the network. It doesn't replace SDRangel, GQRX, or OpenWebRX+; it's the layer underneath that decides how those apps, and others like Kismet or an AI/analytics pipeline, get access to the hardware.
+SIGedge is an RF edge platform: it takes SDR hardware attached to one host and makes it usable — as raw IQ or already-demodulated audio — by upstream services on that host or across the network. It doesn't replace SDRangel, GQRX, or OpenWebRX+; it's the layer underneath that decides how those apps, and others like an AI/analytics pipeline, get access to the hardware.
 
 ## Supported SDR hardware
 
@@ -14,7 +14,7 @@ The three devices used throughout this documentation's reference examples:
 | HackRF One | Wideband TX/RX |
 | RTL-SDR (v3/v4) | Low-cost VHF/UHF receiver |
 
-Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: **BladeRF**, **Ettus Research USRP (UHD)**, **RigExpert Fobos**, **KerberosSDR**, **LimeSDR**, **PlutoSDR**, and **SDRplay** — plus **Ubertooth One**, a Bluetooth/BLE capture device used with Kismet rather than an RF receiver in the SDR sense. Run `SIGedge list library` for the full, current package list.
+Also supported, installable during setup or any time afterward with `SIGedge device install <device>`: **BladeRF**, **Ettus Research USRP (UHD)**, **RigExpert Fobos**, **KerberosSDR**, **LimeSDR**, **PlutoSDR**, and **SDRplay** — plus **Ubertooth One**, a Bluetooth/BLE capture device rather than an RF receiver in the SDR sense. Run `SIGedge list library` for the full, current package list.
 
 ## From a dedicated SDR app to a shared radio platform
 
@@ -71,14 +71,6 @@ Each of the following runs on top of one of the two models above. This section c
 
 **Setup:** the confirmed-working RX-888 install path (via the luarvique PPA, not `SIGedge install openwebrx`) is documented in KA9Q-DEPLOYMENT.md's ["RX-888 in OpenWebRX+"](KA9Q-DEPLOYMENT.md#rx-888-in-openwebrx-confirmed-working-path-not-packagespkg_openwebrx) section, alongside the switch-over instructions.
 
-### Kismet — WiFi/Bluetooth/RF protocol monitor
-
-**Delivers:** passive monitoring and device-tracking for WiFi, Bluetooth, and ISM-band RF traffic — a different job than tuning a signal by hand, closer to a network/RF security tool than a receiver app.
-
-**How it fits together:** a protocol-layer service that runs *alongside* `radiod`/OpenWebRX+, not an alternative to either. It needs its own WiFi adapter (monitor-mode capable) and, optionally, its own **RTL-SDR (rtl433)** or **Ubertooth** unit for ISM-band and Bluetooth capture.
-
-**Setup:** full build/install, capture-source configuration, and troubleshooting are in [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md).
-
 ### AI and analytics bridges
 
 **Delivers:** early-stage tooling for asking an LLM (via Ollama) what's active on a `radiod` channel, rather than watching a waterfall yourself.
@@ -99,9 +91,9 @@ Each of the following runs on top of one of the two models above. This section c
 
 Every service above eventually touches physical hardware, and **an SDR must have exactly one active owner at a time.** Do not start a direct-access application (SDRangel, OpenWebRX+, GQRX, `rtl_tcp`, ...) against a device a `radiod` instance already owns, and do not start `radiod` for a device a direct-access app or SoapyRemote already has open. Two different physical SDRs on the same host can run under two different owners simultaneously — for example, HackRF under `radiod` while an RTL-SDR is handed to a direct-access app — the constraint is per device, not per host.
 
-Kismet extends the same rule to its own capture sources. Whichever devices it opens directly — RTL-SDR via `kismet_cap_sdr_rtl433`, Ubertooth via `kismet_cap_ubertooth_one` — still need exactly one owner. When two always-on services genuinely need the same device *type* at once (`radiod` running an RTL-SDR mission while Kismet also wants RTL-SDR-based ISM-band capture, for instance), the resolution is one physical unit per consumer, each pinned to its own service by USB serial number rather than left to auto-detect and risk both landing on the same dongle — RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default; RX-888/HackRF's higher cost is exactly why the discipline-only, one-unit-total model above still applies to them instead.
+When two always-on services genuinely need the same device *type* at once, the resolution is one physical unit per consumer, each pinned to its own service by USB serial number rather than left to auto-detect and risk both landing on the same dongle — RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default; RX-888/HackRF's higher cost is exactly why the discipline-only, one-unit-total model above still applies to them instead.
 
-`scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines and live enabled/active state, OpenWebRX's live state, Kismet's `rtl433-sn-<serial>`/`ubertooth<N>` source lines, RTL-TCP server's `RTLTCP_SERIAL`), cross-matched against what's actually plugged in and flagging it if `radiod` and OpenWebRX are ever both active at once — check it before enabling a new service on a device that might already be spoken for. Pass `--json` for a machine-readable version. `scripts/service_toggle` is the companion tool that actually switches a device between `radiod` and OpenWebRX.
+`scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines and live enabled/active state, OpenWebRX's live state, RTL-TCP server's `RTLTCP_SERIAL`), cross-matched against what's actually plugged in and flagging it if `radiod` and OpenWebRX are ever both active at once — check it before enabling a new service on a device that might already be spoken for. Pass `--json` for a machine-readable version. `scripts/service_toggle` is the companion tool that actually switches a device between `radiod` and OpenWebRX.
 
 ## Supported platforms
 
@@ -204,7 +196,5 @@ Before enabling it, make sure none of the SDRs it would expose are already owned
 
 - [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) — full ka9q-radio deployment instructions, RX-888 firmware bring-up, and current implementation limitations.
 - [NETWORKING.md](NETWORKING.md) — how ka9q-radio's multicast addressing actually resolves (`dns = yes` vs. hashed), and this deployment's static address scheme.
-- [KISMET-DEPLOYMENT.md](KISMET-DEPLOYMENT.md) — full Kismet build/install, capture-source configuration (WiFi, RTL-SDR, Ubertooth), and troubleshooting.
-- [KISMET-CHECKLIST.md](KISMET-CHECKLIST.md) — validation status and open items for Kismet as a protocol-layer monitor alongside `radiod`.
 - [ai/README.md](ai/README.md) — bridges/adapters exposing `radiod` multicast channels to AI consumers (the "APIs / MCP" branch of the architecture diagram above).
 - [decoders/README.md](decoders/README.md) — bridges feeding `radiod` multicast audio into decode-side applications (the "decoders" branch of the architecture diagram above).

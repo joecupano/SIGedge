@@ -18,17 +18,6 @@ which reports this same claim.
 `scripts/setup_services` when `soapysdrsrv` is selected. No package script -- just wraps
 `SoapySDRServer`, which `soapysdr-tools` already installs unconditionally.
 
-**kismet.service**        - Kismet capture daemon unit, deployed by `packages/pkg_kismet`
-(`@kismet_user@`/`@kismet_home@` placeholders filled in per host, same `@...@` convention as
-`openwebrx.service`'s `@openwebrxdir@`). A protocol-layer service, not an alternative to
-radiod -- it can run alongside a radiod/OpenWebRX+ deployment rather than instead of one.
-**kismet_site.conf.example** - Installed once to `/usr/local/etc/kismet_site.conf` by
-`packages/pkg_kismet` (left alone on a rebuild so local edits survive); see the file's own
-comments for the WiFi source= line every host must set manually, and for the optional
-RTL-SDR (`rtl433-sn-<serial>`) and Ubertooth (`ubertooth<N>`) capture sources -- including
-the device-ownership caveat against `radiod`'s own use of the same hardware, per
-README.md. Full walkthrough in [KISMET-DEPLOYMENT.md](../KISMET-DEPLOYMENT.md).
-
 **radiod@\<instance>.conf** - Proven radiod reference-mission templates, deployed as-is by
 `scripts/cfg_ka9q-radio` (`##TTL##`/`##CENTER_HZ##`/`##IFACE##`/`##SERIAL##` are the only
 placeholders it fills in per host; everything else is trusted, checked-in convention). Each
