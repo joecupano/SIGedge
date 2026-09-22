@@ -25,7 +25,7 @@ subdirectory's own README covers its prerequisites and how to run it.
 matching `radiod` channel already existed. `freedv-hf`, `radiosonde-rs41`,
 and `ft8-jt9` don't have that luxury — their operating frequency is a
 real band/site choice, so those three require adding a channel yourself
-first via `scripts/cfg_ka9q-radio_tui` (see each bridge's README for a
+first via `scripts/ka9q-radio-builder` (see each bridge's README for a
 starting-point frequency and why `cfg_ka9q-radio` itself can't generate
 one for you). `ft8-jt9` is also structurally different from the other
 three: `jt-decoded` is a native ka9q-radio multicast client, not a shell

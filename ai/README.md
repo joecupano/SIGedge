@@ -10,7 +10,7 @@ re-wrapped as an MCP server later. See
 [ollama-bridge/README.md](ollama-bridge/README.md).
 
 Nothing here is wired into `SIGedge setup`/`scripts/` dispatch yet — run
-and configure it directly, same pattern as `scripts/cfg_ka9q-radio_tui`.
+and configure it directly, same pattern as `scripts/ka9q-radio-builder`.
 
 ## Deployment
 
@@ -27,7 +27,7 @@ so at this stage it only reads local files (`channels.yaml`,
   `OLLAMA_HOST` points at (default `http://localhost:11434`; point it at
   a LAN host with a GPU if this node doesn't have one).
 - No systemd unit yet. Run it directly as a plain process, same as
-  `scripts/cfg_ka9q-radio_tui` — it isn't a long-running daemon in this
+  `scripts/ka9q-radio-builder` — it isn't a long-running daemon in this
   sketch, `run_agent_example.py` is a one-shot CLI for testing.
 - Use a venv for anything beyond ad-hoc testing, same guidance as
   `scripts/README.md`'s `textual` note: `sudo apt-get install -y

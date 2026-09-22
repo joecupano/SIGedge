@@ -21,7 +21,7 @@ radiod@<mission> --RTP/multicast--> jt-decoded --<wav captures>--> jt9 --> decod
 
 1. **A `radiod` channel demodulating USB on an FT8 (or FT4/WSPR)
    frequency.** Same gap as `freedv-hf`/`radiosonde-rs41` — no reference
-   mission covers this; add one with `scripts/cfg_ka9q-radio_tui` (see
+   mission covers this; add one with `scripts/ka9q-radio-builder` (see
    [scripts/README.md](../../scripts/README.md)).
    **14.074 MHz USB** is the universally used 20m FT8 dial frequency and
    the standard starting point — unlike FreeDV's "commonly used" calling

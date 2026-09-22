@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SIGedge -- cfg_ka9q-radio_tui
+"""SIGedge -- ka9q-radio-builder
 
 20260831-0000
 
@@ -87,7 +87,7 @@ like any other 'a'/'c' edit -- it shows up in the tree immediately and
 only reaches disk (in /tmp) via the usual 'w' Write.
 
 Usage:
-    scripts/cfg_ka9q-radio_tui
+    scripts/ka9q-radio-builder
 
 Requires the "textual" Python package -- see KA9Q-DEPLOYMENT.md's
 "Interactive alternative" section for how to install it on Debian/Ubuntu.
@@ -221,7 +221,7 @@ class RadiodConfig:
         header = (
             f"# SIGedge ka9q-radio configuration\n"
             f"# Mission: {instance}\n"
-            f"# Created by cfg_ka9q-radio_tui -- add sections/keys with 'a'."
+            f"# Created by ka9q-radio-builder -- add sections/keys with 'a'."
         )
         sections: SectionDict = OrderedDict()
         sections["global"] = OrderedDict({"hardware": ""})

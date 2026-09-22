@@ -16,7 +16,7 @@ for what's actually in the air near you before picking a frequency.
 ## Prerequisites
 
 1. **A `radiod` channel demodulating FM on a radiosonde frequency.** Add
-   one with `scripts/cfg_ka9q-radio_tui` (see
+   one with `scripts/ka9q-radio-builder` (see
    [scripts/README.md](../../scripts/README.md)) —
    `cfg_ka9q-radio` itself only regenerates the three fixed reference
    templates and none of them is a 400-406 MHz mission.

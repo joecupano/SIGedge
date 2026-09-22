@@ -26,6 +26,6 @@ template) and a static `status` address (still the `sigedge-<hardware>.local` na
 `scripts/cfg_ka9q-radio` pins it to a fixed address via a `/etc/hosts` entry, since a
 literal address in `status` itself doesn't work; see NETWORKING.md's "How the override
 actually works"). See [NETWORKING.md](../NETWORKING.md)'s "Current static assignment"
-table for the actual address-per-instance assignment. `scripts/cfg_ka9q-radio_tui` is the
+table for the actual address-per-instance assignment. `scripts/ka9q-radio-builder` is the
 separate, interactive tool for building or editing configs beyond these fixed reference
 missions.

@@ -16,7 +16,7 @@ that channel yourself before this bridge has anything to decode.
 ## Prerequisites
 
 1. **A `radiod` channel demodulating USB on an HF frequency carrying
-   FreeDV traffic.** Use `scripts/cfg_ka9q-radio_tui` to add one — it's
+   FreeDV traffic.** Use `scripts/ka9q-radio-builder` to add one — it's
    the tool for missions beyond the three fixed reference templates (see
    [scripts/README.md](../../scripts/README.md) for
    why `cfg_ka9q-radio` itself can't do this). **14.236 MHz USB** is the

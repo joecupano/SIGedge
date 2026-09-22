@@ -27,7 +27,7 @@ but further configuration is necessary for each service before enabling them.
 Directly sourced by **setup_services** during **SIGedge setup**.
 Reachable via **SIGedge config ka9q-radio <mission>**. 
 
-- **cfg_ka9q-radio_tui**
+- **ka9q-radio-builder**
 Standalone Python/[Textual](https://textual.textualize.io/) editor for
 `radiod@<instance>.conf` files, styled after ka9q-radio's own `control`
 program (bordered panels, live status, single-letter hotkeys). Full
@@ -51,7 +51,7 @@ is version 0.1.x and far too old for this script): `pip install --user
 && python3 -m venv .venv && .venv/bin/pip install textual` if you'd rather
 keep it isolated (plain `python3 -m venv` fails on Debian/Ubuntu until
 `python3-venv` is installed -- ensurepip isn't in the base image). Run
-directly: `scripts/cfg_ka9q-radio_tui`; not part of the `SIGedge`
+directly: `scripts/ka9q-radio-builder`; not part of the `SIGedge`
 parent-script dispatch.
 
 - **service_toggle**

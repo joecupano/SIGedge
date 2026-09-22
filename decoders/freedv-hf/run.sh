@@ -13,7 +13,7 @@
 ### (rx888-wwv/hackrf-aprs/rtlsdr-simplex) demodulate USB, and FreeDV's
 ### calling frequency is an HF band choice, not something this project can
 ### default for you. You must create that channel yourself first --
-### scripts/cfg_ka9q-radio_tui (see its README for why: cfg_ka9q-radio
+### scripts/ka9q-radio-builder (see its README for why: cfg_ka9q-radio
 ### itself only ever regenerates the three fixed reference templates).
 ### 14.236 MHz USB is the commonly used international FreeDV calling
 ### frequency and a reasonable starting point on an RX-888/HF front end.

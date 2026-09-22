@@ -21,7 +21,7 @@ An SDR must have only one active owner. Do not run `radiod` and a direct-access 
 | RX-888 host preparation | `devices/pkg_rx888` | Builds and stages volatile FX3 firmware, installs udev rules, configures USB buffering, and records a manifest |
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
 | Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
-| Radio mission configuration (TUI) | `scripts/cfg_ka9q-radio_tui` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control. Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
+| Radio mission configuration (TUI) | `scripts/ka9q-radio-builder` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control. Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
 | Reference configurations | `config/radiod@<instance>.conf` | Shows the current generated configuration shape |
 | ka9q-radio / OpenWebRX switch | `scripts/service_toggle` | Safely switches between ka9q-radio radiod missions and OpenWebRX, always stopping+disabling the side being left before starting the other |
 
@@ -200,7 +200,7 @@ Serial overrides should be used only when supported by the installed ka9q-radio 
 
 ### Interactive alternative
 
-`scripts/cfg_ka9q-radio_tui` is a standalone [Textual](https://textual.textualize.io/) app, styled after ka9q-radio's own `control` program (bordered panels, a live status list, single-letter hotkeys -- see `source/ka9q-radio/docs/utils/control.md` for `control`'s own key table): a mission list on the left (each row showing live enabled/active state), and on the right a tree of the selected mission's actual INI structure -- every section and every key/value pair, not a fixed field set.
+`scripts/ka9q-radio-builder` is a standalone [Textual](https://textual.textualize.io/) app, styled after ka9q-radio's own `control` program (bordered panels, a live status list, single-letter hotkeys -- see `source/ka9q-radio/docs/utils/control.md` for `control`'s own key table): a mission list on the left (each row showing live enabled/active state), and on the right a tree of the selected mission's actual INI structure -- every section and every key/value pair, not a fixed field set.
 
 It supports full add/change/delete/update over the complete config surface:
 
@@ -234,10 +234,10 @@ pip install --user --break-system-packages textual
 sudo apt-get install -y python3-venv
 python3 -m venv scripts/.venv
 scripts/.venv/bin/pip install textual
-scripts/.venv/bin/python3 scripts/cfg_ka9q-radio_tui
+scripts/.venv/bin/python3 scripts/ka9q-radio-builder
 ```
 
-Either way, once installed: `scripts/cfg_ka9q-radio_tui` (or `.venv/bin/python3 scripts/cfg_ka9q-radio_tui` for the venv path).
+Either way, once installed: `scripts/ka9q-radio-builder` (or `.venv/bin/python3 scripts/ka9q-radio-builder` for the venv path).
 
 ## 5. Enable and start explicitly
 

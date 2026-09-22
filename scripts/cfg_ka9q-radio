@@ -21,7 +21,7 @@
 ### ##CENTER_HZ##, ##IFACE##, ##SERIAL##) and writes the result to
 ### $KA9Q_CONFIG_DIR. Editing the reference missions themselves, or
 ### building configs beyond them, belongs in the templates or in
-### scripts/cfg_ka9q-radio_tui, not in this script.
+### scripts/ka9q-radio-builder, not in this script.
 ###
 ### It also keeps a marked block in $KA9Q_HOSTS_FILE mapping each mission's
 ### sigedge-<hardware>.local status name to its static multicast address
