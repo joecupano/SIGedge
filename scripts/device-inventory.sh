@@ -41,25 +41,35 @@
 # and OpenWebRX; see README.md's device-ownership section for the
 # underlying one-owner-per-device policy.
 #
-# Usage: ./scripts/device-inventory.sh [--json]
+# Usage: ./scripts/device-inventory.sh [--detail|--json]
 #   No sudo required either way.
-#   --json   Emit the same data as structured JSON instead of the default
-#            human-readable text, for other tooling to consume. Default
-#            output is unchanged.
+#   (no args) Concise default: one line per attached SDR -- which service
+#            (if any) it's pinned to by serial, and whether that service
+#            is enabled. This is the quick "what's plugged in, who owns
+#            it" answer; see --detail for everything this script knows.
+#   --detail Full diagnostic output: every claim source (radiod per
+#            mission, OpenWebRX, RTL-TCP, the unverified SDRangel/SoapySDR
+#            servers), live enabled/active state, unpinned-device
+#            warnings, and the conflict check. This was the only, default
+#            output before --detail existed.
+#   --json   Emit the detailed data as structured JSON instead of text,
+#            for other tooling to consume.
 
 set -uo pipefail
 
 JSON_OUT=0
+DETAIL_OUT=0
 case "${1:-}" in
     --json ) JSON_OUT=1 ;;
+    --detail ) DETAIL_OUT=1 ;;
     -h|--help )
-        echo "Usage: $0 [--json]"
+        echo "Usage: $0 [--detail|--json]"
         exit 0
         ;;
     "" ) ;;
     * )
         echo "Unrecognized argument: $1" >&2
-        echo "Usage: $0 [--json]" >&2
+        echo "Usage: $0 [--detail|--json]" >&2
         exit 1
         ;;
 esac
@@ -68,6 +78,7 @@ KA9Q_CONFIG_DIR="${KA9Q_CONFIG_DIR:-/etc/radio}"
 OPENWEBRX_UNIT="openwebrx.service"
 SDRANGELSRV_UNIT="sdrangelsrv.service"
 SOAPYSDRSRV_UNIT="soapysdrsrv.service"
+RTLTCP_UNIT="rtltcp.service"
 
 # RTL-TCP server's device pin, if any -- see config/rtltcp.service's
 # EnvironmentFile=.
@@ -225,6 +236,8 @@ RTLTCP_ATTACHED=""
 if [[ -n "$RTLTCP_SERIAL" ]]; then
     serial_attached "rtlsdr" "$RTLTCP_SERIAL" && RTLTCP_ATTACHED="yes" || RTLTCP_ATTACHED="no"
 fi
+RTLTCP_ENABLED="$(unit_enabled_str "$RTLTCP_UNIT")"
+RTLTCP_ACTIVE_STR="$(unit_active_str "$RTLTCP_UNIT")"
 
 
 ### ---------------------------------------------------------------------
@@ -287,8 +300,9 @@ print_json() {
     printf '    "openwebrx": {"enabled": "%s", "active": "%s"},\n' \
         "$(json_escape "$OPENWEBRX_ENABLED")" "$(json_escape "$OPENWEBRX_ACTIVE_STR")"
 
-    printf '    "rtltcp": {"env_file": "%s", "serial": %s, "serial_attached": %s},\n' \
-        "$(json_escape "$RTLTCP_ENV_FILE")" "$(json_str_or_null "$RTLTCP_SERIAL")" "$(json_str_or_null "$RTLTCP_ATTACHED")"
+    printf '    "rtltcp": {"env_file": "%s", "serial": %s, "serial_attached": %s, "enabled": "%s", "active": "%s"},\n' \
+        "$(json_escape "$RTLTCP_ENV_FILE")" "$(json_str_or_null "$RTLTCP_SERIAL")" "$(json_str_or_null "$RTLTCP_ATTACHED")" \
+        "$(json_escape "$RTLTCP_ENABLED")" "$(json_escape "$RTLTCP_ACTIVE_STR")"
 
     echo '    "unverified_device_services": {'
     printf '      "sdrangelsrv": %s,\n' "$(json_bool "$SDRANGELSRV_ACTIVE_STR")"
@@ -309,109 +323,191 @@ fi
 
 
 ### ---------------------------------------------------------------------
-### Human-readable output (default)
+### Concise output (default) -- one line per attached SDR: which service
+### it's pinned to by serial, and whether that service is enabled. Only
+### radiod and RTL-TCP can ever be shown here, because they're the only
+### two claim sources that pin a *specific* serial -- OpenWebRX is a
+### single whole-host service with no per-device pin (its own device
+### selection lives in /var/lib/openwebrx/settings.json, see this
+### script's header comment), so it's reported once, separately, rather
+### than guessed onto a device row. SDRangel/SoapySDR Server have no
+### per-device claim at all and are --detail-only.
 ### ---------------------------------------------------------------------
 
-echo "== Attached SDR/RF devices =="
-echo
+print_concise() {
+    if [[ ${#DEV_VIDPID[@]} -eq 0 ]]; then
+        echo "No SDR/RF devices attached."
+        return
+    fi
 
-if [[ ${#DEV_VIDPID[@]} -eq 0 ]]; then
-    echo "  (none of the known SDR/RF device types found attached)"
-    echo
-else
+    local i j vidpid kind serial service enabled mission
+
+    printf '%-34s %-34s %-26s %s\n' "DEVICE" "SERIAL" "SERVICE" "ENABLED"
     for i in "${!DEV_VIDPID[@]}"; do
-        echo "  [${DEV_VIDPID[$i]}] ${DEV_LABEL[$i]}"
-        echo "    USB:    Bus ${DEV_BUSDEV[$i]}"
-        echo "    Serial: ${DEV_SERIAL[$i]:-<none exposed>}"
-        echo
-    done
-fi
+        vidpid="${DEV_VIDPID[$i]}"
+        kind="${DEVICE_KIND[$vidpid]:-}"
+        serial="${DEV_SERIAL[$i]}"
+        service="-"
+        enabled="-"
 
-echo "== Existing SIGedge claims =="
-echo
+        if [[ -n "$serial" ]]; then
+            for j in "${!RADIOD_MISSION[@]}"; do
+                if [[ "$(echo "${RADIOD_HW[$j]:-}" | tr '[:upper:]' '[:lower:]')" == "$kind" \
+                    && "${RADIOD_SERIAL[$j]}" == "$serial" ]]; then
+                    mission="${RADIOD_MISSION[$j]#radiod@}"
+                    mission="${mission%.conf}"
+                    service="radiod@${mission}"
+                    enabled="${RADIOD_ENABLED[$j]}"
+                    break
+                fi
+            done
 
-echo "-- radiod missions (${KA9Q_CONFIG_DIR}/radiod@*.conf) --"
-if [[ ${#RADIOD_MISSION[@]} -eq 0 ]]; then
-    echo "  (none found)"
-else
-    for i in "${!RADIOD_MISSION[@]}"; do
-        echo "  ${RADIOD_MISSION[$i]}: hardware=${RADIOD_HW[$i]:-?} serial=${RADIOD_SERIAL[$i]:-<unpinned>} enabled=${RADIOD_ENABLED[$i]} active=${RADIOD_ACTIVE[$i]}"
-
-        kind="$(echo "${RADIOD_HW[$i]:-}" | tr '[:upper:]' '[:lower:]')"
-        if [[ -n "${RADIOD_SERIAL[$i]}" ]]; then
-            if [[ "${RADIOD_ATTACHED[$i]}" == "yes" ]]; then
-                echo "      -> serial ${RADIOD_SERIAL[$i]} is currently attached"
-            else
-                echo "      -> serial ${RADIOD_SERIAL[$i]} is NOT currently attached -- this mission will fail to open its device"
-            fi
-        else
-            count="${ATTACHED_COUNT[$kind]:-0}"
-            if [[ "$count" -gt 1 ]]; then
-                echo "      -> unpinned with $count attached $kind device(s) -- auto-detect may grab the wrong one; pin by serial"
-            elif [[ "$count" -eq 1 ]]; then
-                echo "      -> unpinned; 1 attached $kind device will be used"
-            else
-                echo "      -> unpinned; no $kind device currently attached"
+            if [[ "$service" == "-" && "$kind" == "rtlsdr" && "$serial" == "$RTLTCP_SERIAL" ]]; then
+                service="rtltcp"
+                enabled="$RTLTCP_ENABLED"
             fi
         fi
+
+        printf '%-34s %-34s %-26s %s\n' \
+            "${DEV_LABEL[$i]}" "${serial:-<none exposed>}" "$service" "$enabled"
     done
-fi
-echo
 
-echo "-- OpenWebRX ($OPENWEBRX_UNIT) --"
-if [[ "$OPENWEBRX_ENABLED" == "not installed" ]]; then
-    echo "  not installed"
-else
-    echo "  enabled=$OPENWEBRX_ENABLED active=$OPENWEBRX_ACTIVE_STR"
-    echo "      -> device selection lives in /var/lib/openwebrx/settings.json (web UI), not shown here"
-fi
-echo
-
-if [[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]]; then
-    echo "  ** CONFLICT: at least one radiod@ mission AND OpenWebRX are both active at once. **"
-    echo "  ** An SDR must have exactly one active owner -- pick a side with                  **"
-    echo "  ** 'scripts/service_toggle ka9q-radio|openwebrx|off'.                              **"
     echo
-fi
+    echo "OpenWebRX ($OPENWEBRX_UNIT): enabled=$OPENWEBRX_ENABLED"
+    echo "  (whole-host, no per-device pin -- device selection is in /var/lib/openwebrx/settings.json)"
 
-echo "-- SDRangel server / SoapySDR Server (unverified) --"
-echo "  $SDRANGELSRV_UNIT:  $SDRANGELSRV_ACTIVE_STR"
-echo "  $SOAPYSDRSRV_UNIT:  $SOAPYSDRSRV_ACTIVE_STR"
-echo "  (active/inactive only -- neither exposes a SIGedge-visible per-device claim;"
-echo "   'inactive' does NOT mean a device is free if one of these is stopped-but-"
-echo "   still-configured against it. See this script's own header comment.)"
-echo
-
-echo "-- RTL-TCP server ($RTLTCP_ENV_FILE) --"
-if [[ -n "$RTLTCP_SERIAL" ]]; then
-    echo "  RTLTCP_SERIAL=$RTLTCP_SERIAL"
-    if [[ "$RTLTCP_ATTACHED" == "yes" ]]; then
-        echo "      -> serial $RTLTCP_SERIAL is currently attached"
-    else
-        echo "      -> serial $RTLTCP_SERIAL is NOT currently attached -- rtl_tcp will fail to open its device"
+    if [[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]]; then
+        echo
+        echo "** CONFLICT: a radiod@ mission and OpenWebRX are both active at once -- an SDR must"
+        echo "** have exactly one active owner. Pick a side: scripts/service_toggle ka9q-radio|openwebrx|off"
     fi
-else
-    echo "  (unpinned -- auto-detects whichever unit it finds, or not installed)"
-fi
-echo
 
-echo "== Reading this =="
-echo "An 'unpinned' radiod mission or RTL-TCP server with no serial constraint will"
-echo "grab whichever matching device it finds first."
-echo ""
-echo "This is fine with exactly ONE unit of that device type attached but a real collision"
-echo "risk with more than one of that device attached."
-echo ""
-echo "Pin by serial"
-echo "(radiod: RTLSDR_SERIAL= to scripts/cfg_ka9q-radio; RTL-TCP: RTLTCP_SERIAL= in"
-echo "$RTLTCP_ENV_FILE)"
-echo "whenever two always-on consumers need the same device type."
-echo ""
-echo "enabled=/active= reflects live systemd state, not just what's configured -- a mission's"
-echo "radiod@<mission>.conf can exist and still be disabled/inactive. Use scripts/service_toggle"
-echo "to switch a device between radiod and OpenWebRX; it always stops+disables the side being"
-echo "left before starting the other."
-echo ""
-echo "Pass --json for a machine-readable version of everything above."
-echo ""
-echo "See README.md's device-ownership section and this script's own header comment."
+    echo
+    echo "Pass --detail for the full diagnostic report, --json for machine-readable output."
+}
+
+
+### ---------------------------------------------------------------------
+### Detailed output (--detail) -- everything this script knows: every
+### claim source, live enabled/active state, unpinned-device warnings,
+### and the conflict check. This was the only, default output before
+### --detail existed.
+### ---------------------------------------------------------------------
+
+print_detail() {
+    echo "== Attached SDR/RF devices =="
+    echo
+
+    if [[ ${#DEV_VIDPID[@]} -eq 0 ]]; then
+        echo "  (none of the known SDR/RF device types found attached)"
+        echo
+    else
+        for i in "${!DEV_VIDPID[@]}"; do
+            echo "  [${DEV_VIDPID[$i]}] ${DEV_LABEL[$i]}"
+            echo "    USB:    Bus ${DEV_BUSDEV[$i]}"
+            echo "    Serial: ${DEV_SERIAL[$i]:-<none exposed>}"
+            echo
+        done
+    fi
+
+    echo "== Existing SIGedge claims =="
+    echo
+
+    echo "-- radiod missions (${KA9Q_CONFIG_DIR}/radiod@*.conf) --"
+    if [[ ${#RADIOD_MISSION[@]} -eq 0 ]]; then
+        echo "  (none found)"
+    else
+        for i in "${!RADIOD_MISSION[@]}"; do
+            echo "  ${RADIOD_MISSION[$i]}: hardware=${RADIOD_HW[$i]:-?} serial=${RADIOD_SERIAL[$i]:-<unpinned>} enabled=${RADIOD_ENABLED[$i]} active=${RADIOD_ACTIVE[$i]}"
+
+            kind="$(echo "${RADIOD_HW[$i]:-}" | tr '[:upper:]' '[:lower:]')"
+            if [[ -n "${RADIOD_SERIAL[$i]}" ]]; then
+                if [[ "${RADIOD_ATTACHED[$i]}" == "yes" ]]; then
+                    echo "      -> serial ${RADIOD_SERIAL[$i]} is currently attached"
+                else
+                    echo "      -> serial ${RADIOD_SERIAL[$i]} is NOT currently attached -- this mission will fail to open its device"
+                fi
+            else
+                count="${ATTACHED_COUNT[$kind]:-0}"
+                if [[ "$count" -gt 1 ]]; then
+                    echo "      -> unpinned with $count attached $kind device(s) -- auto-detect may grab the wrong one; pin by serial"
+                elif [[ "$count" -eq 1 ]]; then
+                    echo "      -> unpinned; 1 attached $kind device will be used"
+                else
+                    echo "      -> unpinned; no $kind device currently attached"
+                fi
+            fi
+        done
+    fi
+    echo
+
+    echo "-- OpenWebRX ($OPENWEBRX_UNIT) --"
+    if [[ "$OPENWEBRX_ENABLED" == "not installed" ]]; then
+        echo "  not installed"
+    else
+        echo "  enabled=$OPENWEBRX_ENABLED active=$OPENWEBRX_ACTIVE_STR"
+        echo "      -> device selection lives in /var/lib/openwebrx/settings.json (web UI), not shown here"
+    fi
+    echo
+
+    if [[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]]; then
+        echo "  ** CONFLICT: at least one radiod@ mission AND OpenWebRX are both active at once. **"
+        echo "  ** An SDR must have exactly one active owner -- pick a side with                  **"
+        echo "  ** 'scripts/service_toggle ka9q-radio|openwebrx|off'.                              **"
+        echo
+    fi
+
+    echo "-- SDRangel server / SoapySDR Server (unverified) --"
+    echo "  $SDRANGELSRV_UNIT:  $SDRANGELSRV_ACTIVE_STR"
+    echo "  $SOAPYSDRSRV_UNIT:  $SOAPYSDRSRV_ACTIVE_STR"
+    echo "  (active/inactive only -- neither exposes a SIGedge-visible per-device claim;"
+    echo "   'inactive' does NOT mean a device is free if one of these is stopped-but-"
+    echo "   still-configured against it. See this script's own header comment.)"
+    echo
+
+    echo "-- RTL-TCP server ($RTLTCP_UNIT, $RTLTCP_ENV_FILE) --"
+    if [[ "$RTLTCP_ENABLED" == "not installed" ]]; then
+        echo "  not installed"
+    else
+        echo "  enabled=$RTLTCP_ENABLED active=$RTLTCP_ACTIVE_STR"
+        if [[ -n "$RTLTCP_SERIAL" ]]; then
+            echo "  RTLTCP_SERIAL=$RTLTCP_SERIAL"
+            if [[ "$RTLTCP_ATTACHED" == "yes" ]]; then
+                echo "      -> serial $RTLTCP_SERIAL is currently attached"
+            else
+                echo "      -> serial $RTLTCP_SERIAL is NOT currently attached -- rtl_tcp will fail to open its device"
+            fi
+        else
+            echo "  (unpinned -- auto-detects whichever unit it finds)"
+        fi
+    fi
+    echo
+
+    echo "== Reading this =="
+    echo "An 'unpinned' radiod mission or RTL-TCP server with no serial constraint will"
+    echo "grab whichever matching device it finds first."
+    echo ""
+    echo "This is fine with exactly ONE unit of that device type attached but a real collision"
+    echo "risk with more than one of that device attached."
+    echo ""
+    echo "Pin by serial"
+    echo "(radiod: RTLSDR_SERIAL= to scripts/cfg_ka9q-radio; RTL-TCP: RTLTCP_SERIAL= in"
+    echo "$RTLTCP_ENV_FILE)"
+    echo "whenever two always-on consumers need the same device type."
+    echo ""
+    echo "enabled=/active= reflects live systemd state, not just what's configured -- a mission's"
+    echo "radiod@<mission>.conf can exist and still be disabled/inactive. Use scripts/service_toggle"
+    echo "to switch a device between radiod and OpenWebRX; it always stops+disables the side being"
+    echo "left before starting the other."
+    echo ""
+    echo "Pass --json for a machine-readable version of everything above, or omit both flags for"
+    echo "the concise per-device summary."
+    echo ""
+    echo "See README.md's device-ownership section and this script's own header comment."
+}
+
+if [[ "$DETAIL_OUT" -eq 1 ]]; then
+    print_detail
+else
+    print_concise
+fi
