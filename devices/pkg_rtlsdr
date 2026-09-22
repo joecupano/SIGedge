@@ -18,6 +18,73 @@ if [[ ! "$1" =~ ^(remove|purge|install|build|package)$ ]]; then
     exit 1
 fi
 
+# RTL-SDR dongles very often leave the factory with no serial number in
+# EEPROM, or with a shared default (e.g. "00000001") -- indistinguishable
+# to librtlsdr/SoapyRTLSDR device selection, and to SIGedge's own
+# serial-pinning story (see README.md's "Device ownership across services"
+# and scripts/device-inventory.sh: "RTL-SDR dongles are cheap enough that a
+# dedicated unit per consumer is the practical default", which only works
+# if each unit actually has a distinct serial). Walk every RTL-SDR device
+# rtl_eeprom can see and require a unique serial for each one right here,
+# while the operator still has the physical dongle in hand and its bus
+# position is unambiguous -- deferring this to whenever a second dongle
+# shows up later means a config-time hunt with no physical cue to go on.
+_sigedge_rtlsdr_assign_serials() {
+    local idx=0 serial="" new_serial="" out rc known found found_any=0
+
+    echo "== RTL-SDR EEPROM serial check =="
+    local -a seen_serials=()
+
+    while out="$(sudo rtl_eeprom -d "$idx" 2>&1)"; rc=$?; [[ $rc -eq 0 ]]; do
+        found_any=1
+        serial="$(echo "$out" | sed -n 's/^Serial number:[[:space:]]*//p')"
+
+        found=0
+        for known in "${seen_serials[@]}"; do
+            [[ "$known" == "$serial" ]] && found=1 && break
+        done
+
+        if [[ -z "$serial" || "$found" -eq 1 ]]; then
+            if [[ -z "$serial" ]]; then
+                echo "  RTL-SDR device #$idx has no serial number in EEPROM."
+            else
+                echo "  RTL-SDR device #$idx has serial '$serial', already assigned to another attached unit."
+            fi
+
+            new_serial=""
+            while true; do
+                read -r -p "  Enter a unique serial number for RTL-SDR device #$idx (blank to skip): " new_serial
+                if [[ -z "$new_serial" ]]; then
+                    echo "  Skipping device #$idx -- it will stay unpinned until assigned manually: sudo rtl_eeprom -d $idx -s <serial>"
+                    break
+                fi
+                found=0
+                for known in "${seen_serials[@]}"; do
+                    [[ "$known" == "$new_serial" ]] && found=1 && break
+                done
+                if [[ "$found" -eq 1 ]]; then
+                    echo "  Serial '$new_serial' is already in use on this host -- choose a different one."
+                    continue
+                fi
+                if printf 'y\n' | sudo rtl_eeprom -d "$idx" -s "$new_serial" >/dev/null 2>&1; then
+                    echo "  Assigned serial '$new_serial' to RTL-SDR device #$idx."
+                    serial="$new_serial"
+                else
+                    echo "  Failed to write serial '$new_serial' to RTL-SDR device #$idx -- leaving it unassigned."
+                fi
+                break
+            done
+        else
+            echo "  RTL-SDR device #$idx already has a unique serial: $serial"
+        fi
+
+        [[ -n "$serial" ]] && seen_serials+=("$serial")
+        idx=$((idx + 1))
+    done
+
+    [[ "$found_any" -eq 0 ]] && echo "  (no RTL-SDR devices detected via rtl_eeprom)"
+}
+
 case "$1" in
     remove|purge|install|build|package )
         echo -e "${SIGEDGE_BANNER_COLOR}"
@@ -52,6 +119,8 @@ case "$1" in
         sudo make install
         sudo ldconfig
         echo 'blacklist dvb_usb_rtl28xxu' | sudo tee --append /etc/modprobe.d/blacklist-rtl.conf
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
         grep "^rtlsdr," "$SIGEDGE_DEVLIST" >> $SIGEDGE_INSTALLED_DEVICES
 
         cd $SIGEDGE_SOURCE
@@ -62,6 +131,17 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
+        ;;&
+
+    install )
+        ## EEPROM SERIAL ASSIGNMENT
+        if [[ -t 0 ]]; then
+            _sigedge_rtlsdr_assign_serials
+        else
+            echo "WARNING: non-interactive session -- skipping RTL-SDR EEPROM serial assignment."
+            echo "WARNING: run 'sudo rtl_eeprom -d <index> -s <serial>' manually for each attached dongle before relying on serial pinning."
+        fi
+        unset -f _sigedge_rtlsdr_assign_serials
         ;;&
 
      package )

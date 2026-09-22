@@ -95,6 +95,8 @@ When two always-on services genuinely need the same device *type* at once, the r
 
 `scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines and live enabled/active state, OpenWebRX's live state, RTL-TCP server's `RTLTCP_SERIAL`), cross-matched against what's actually plugged in and flagging it if `radiod` and OpenWebRX are ever both active at once — check it before enabling a new service on a device that might already be spoken for. Pass `--json` for a machine-readable version. `scripts/service_toggle` is the companion tool that actually switches a device between `radiod` and OpenWebRX.
 
+RTL-SDR dongles frequently ship with no serial number in EEPROM, or with a default shared across units, which defeats serial pinning before it starts. `SIGedge device install rtlsdr` (interactive sessions only) checks every attached unit with `rtl_eeprom` and prompts to assign a unique serial to any device with none, or with one that collides with another attached unit; a non-interactive/headless run skips this with a warning, and the serial can be set later by hand with `sudo rtl_eeprom -d <index> -s <serial>`. No other supported device in this list has a genuinely user-writable EEPROM/OTP serial: HackRF's ID is a read-only factory value, and the RX-888 path (`devices/pkg_rx888`) deliberately never flashes EEPROM/SPI.
+
 ## Supported platforms
 
 The current target operating system is Ubuntu Server 24.04 LTS or Debian GNU/Linux 13 (Trixie, including Raspberry Pi OS Desktop, which is Trixie-based) on:
