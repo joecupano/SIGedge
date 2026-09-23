@@ -99,7 +99,7 @@ address so the pairing is visible at a glance:
 |---|---|---|---|
 | `radiod@rx888-wwv` | WWV 10.000 MHz AM | `239.192.1.10` | `239.192.64.10` |
 | `radiod@hackrf-aprs` | APRS 144.390 MHz FM | `239.192.1.20` | `239.192.64.20` |
-| `radiod@rtlsdr-simplex` | Simplex 144.650 MHz FM | `239.192.1.30` | `239.192.64.30` |
+| `radiod@rtlsdr-simplex` | Simplex 146.520 MHz FM | `239.192.1.30` | `239.192.64.30` |
 
 The data addresses are checked into the templates directly (not filled in by
 `scripts/cfg_ka9q-radio` — they aren't host-specific the way

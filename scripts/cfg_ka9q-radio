@@ -12,7 +12,7 @@
 ### missions:
 ###   RX-888  - WWV 10.000 MHz AM
 ###   HackRF  - APRS 144.390 MHz FM
-###   RTL-SDR - Amateur simplex 144.650 MHz FM
+###   RTL-SDR - Amateur simplex 146.520 MHz FM
 ###
 ### The conf content itself is not generated here -- it is read from the
 ### proven, checked-in templates in config/ (config/radiod@<instance>.conf;
@@ -62,7 +62,7 @@
 ###
 ### Hardware center-frequency overrides:
 ###   HACKRF_CENTER_HZ=<Hz>           Default: 144640000
-###   RTLSDR_CENTER_HZ=<Hz>           Default: 144900000
+###   RTLSDR_CENTER_HZ=<Hz>           Default: 146770000
 ###
 ### The HackRF and RTL-SDR tuner centers are intentionally offset +250 kHz
 ### from the desired channel to avoid placing the wanted signal at DC/zero IF.
@@ -91,7 +91,7 @@ HACKRF_SERIAL="${HACKRF_SERIAL:-}"
 RTLSDR_SERIAL="${RTLSDR_SERIAL:-}"
 
 HACKRF_CENTER_HZ="${HACKRF_CENTER_HZ:-144640000}"
-RTLSDR_CENTER_HZ="${RTLSDR_CENTER_HZ:-144900000}"
+RTLSDR_CENTER_HZ="${RTLSDR_CENTER_HZ:-146770000}"
 
 RX888_CONFIG="${KA9Q_CONFIG_DIR}/radiod@rx888-wwv.conf"
 HACKRF_CONFIG="${KA9Q_CONFIG_DIR}/radiod@hackrf-aprs.conf"

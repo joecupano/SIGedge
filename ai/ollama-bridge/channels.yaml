@@ -31,10 +31,10 @@ channels:
     freq_hz: 144390000
     mode: fm
 
-  - id: simplex-144650
-    label: "Amateur simplex 144.650 MHz (FM/NBFM)"
+  - id: simplex-146520
+    label: "Amateur simplex 146.520 MHz (FM/NBFM)"
     instance: rtlsdr-simplex
     status_group: 239.192.1.30
     data_group: 239.192.64.30
-    freq_hz: 144650000
+    freq_hz: 146520000
     mode: fm

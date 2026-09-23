@@ -155,7 +155,7 @@ The current reference missions are:
 |---|---|---|---|---|
 | `rx888` | RX-888 MkII | WWV 10.000 MHz AM | `/etc/radio/radiod@rx888-wwv.conf` | `radiod@rx888-wwv` |
 | `hackrf` | HackRF | APRS 144.390 MHz FM | `/etc/radio/radiod@hackrf-aprs.conf` | `radiod@hackrf-aprs` |
-| `rtlsdr` | RTL-SDR | Simplex 144.650 MHz FM | `/etc/radio/radiod@rtlsdr-simplex.conf` | `radiod@rtlsdr-simplex` |
+| `rtlsdr` | RTL-SDR | Simplex 146.520 MHz FM | `/etc/radio/radiod@rtlsdr-simplex.conf` | `radiod@rtlsdr-simplex` |
 
 Each mission's `status`/`data` multicast address is a static `239.192.x.x` value (`dns =
 on`) rather than one that's re-derived from a hash on every `radiod` restart --
@@ -194,7 +194,7 @@ sudo sed -n '1,240p' /etc/radio/radiod@hackrf-aprs.conf
 | `HACKRF_SERIAL` | Select a HackRF by serial | unset |
 | `RTLSDR_SERIAL` | Select an RTL-SDR by serial | unset |
 | `HACKRF_CENTER_HZ` | HackRF hardware center frequency | `144640000` |
-| `RTLSDR_CENTER_HZ` | RTL-SDR hardware center frequency | `144900000` |
+| `RTLSDR_CENTER_HZ` | RTL-SDR hardware center frequency | `146770000` |
 
 Serial overrides should be used only when supported by the installed ka9q-radio front end.
 
