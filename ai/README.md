@@ -4,9 +4,10 @@ Bridges/adapters that expose SIGedge's `radiod` multicast channels to AI
 consumers — the "APIs / MCP" / "analytics and AI workflows" branch of the
 architecture diagram in the top-level [README.md](../README.md).
 
-**ollama-bridge** — read-only channel status/transcript tools for an
-Ollama server's tool-calling API, written so the same core module can be
-re-wrapped as an MCP server later. See
+**ollama-bridge** — one read-only channel status/transcript tool for an
+Ollama server's tool-calling API. Config-free on the host: the operator's
+`channels.yaml` is pasted into the chat on first use, not read from disk.
+MCP is out of scope for now. See
 [ollama-bridge/README.md](ollama-bridge/README.md).
 
 Nothing here is wired into `SIGedge setup`/`scripts/` dispatch yet — run

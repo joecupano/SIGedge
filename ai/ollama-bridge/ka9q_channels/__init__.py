@@ -1,6 +1,4 @@
-"""ka9q_channels — read-only channel presentation layer for LLM tool use.
+"""ka9q_channels — read-only SIGedge channel access for Ollama.
 
-Provider-agnostic on purpose: ollama_tools.py wraps these functions for
-Ollama's tools= API today; an MCP server can wrap the same functions
-tomorrow with zero changes here. See ../README.md.
+sigedge_tool.py is the one Ollama tool: sigedge_channels(). See ../README.md.
 """

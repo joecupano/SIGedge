@@ -1,9 +1,12 @@
 # Operator-curated allowlist of channels exposed to Ollama.
 #
 # This file is the entire authorization boundary for what an LLM tool
-# call can see: list_channels() reflects exactly this file, nothing more.
-# Adding a channel here is the only way to make it visible; there is no
-# tool that lets the model discover or tune anything beyond this list.
+# call can see — but sigedge_tool.py never reads it off disk itself. Edit
+# your own copy, then paste its contents into the chat when the model
+# asks for channels.yaml on first use (see SKILLS.md); the list_channels
+# action then reflects exactly that pasted text, nothing more. Adding a
+# channel here (and re-pasting) is the only way to make it visible; there
+# is no tool that lets the model discover or tune anything beyond it.
 #
 # status_group/data_group are the static 239.192.x.x addresses assigned in
 # NETWORKING.md's "Current static assignment" table and baked into
