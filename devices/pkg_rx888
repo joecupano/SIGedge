@@ -118,6 +118,7 @@ _sigedge_rx888_main() {
                 git \
                 build-essential \
                 gcc-arm-none-eabi \
+                libnewlib-arm-none-eabi \
                 libusb-1.0-0 \
                 libusb-1.0-0-dev \
                 pkg-config \
@@ -153,7 +154,7 @@ _sigedge_rx888_main() {
             sudo udevadm control --reload-rules || return 1
             sudo udevadm trigger || return 1
 
-            if [[ -w "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" ]]; then
+            if [[ -e "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" ]]; then
                 echo 0 | sudo tee "${SYSROOT}/sys/module/usbcore/parameters/usbfs_memory_mb" >/dev/null || return 1
             else
                 echo "WARNING: usbfs_memory_mb could not be changed live; ${USB_CONF} will apply after reboot." >&2
