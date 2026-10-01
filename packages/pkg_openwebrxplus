@@ -1,0 +1,135 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### pkg_openwebrxplus
+###
+###
+### 20260930-2300
+###
+### OpenWebRX+ (luarvique) from its apt PPA -- the install path that supports
+### the RX-888 MkII, via OpenWebRX+'s "sddc_soapy" device type and the
+### ON5HB/RX888MK2-Soapy module (devices/pkg_rx888mk2-soapy). See
+### KA9Q-DEPLOYMENT.md's "RX-888 in OpenWebRX+" section.
+###
+### This is SIGedge's only OpenWebRX package; the former from-source
+### jketterl/openwebrx build (pkg_openwebrx) was removed -- it had no
+### sddc_soapy device type, so no RX-888 support.
+###
+###     SIGedge (install|remove|purge) openwebrxplus
+###
+### Like every SIGedge service, the unit is left disabled and stopped;
+### enable it with scripts/service_toggle openwebrx.
+###
+
+_sigedge_openwebrxplus_main() {
+    local ACTION="${1:-}"
+    local KEYRING="/etc/apt/trusted.gpg.d/openwebrx-plus.gpg"
+    local SOURCES="/etc/apt/sources.list.d/openwebrx-plus.list"
+    local PPA_DIST=""
+
+    if [[ ! "${ACTION}" =~ ^(remove|purge|install|build|package)$ ]]; then
+        echo -e "${SIGEDGE_BANNER_COLOR:-}"
+        echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: Unknown action or package"
+        echo -e "${SIGEDGE_BANNER_RESET:-}"
+        return 1
+    fi
+
+    case "${ACTION}" in
+        remove|purge|install|build|package )
+            echo -e "${SIGEDGE_BANNER_COLOR:-}"
+            echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ${ACTION} : OpenWebRX+"
+            echo -e "${SIGEDGE_BANNER_RESET:-}"
+        ;;&
+
+        remove )
+            sudo systemctl disable --now openwebrx.service 2>/dev/null || true
+            sudo apt-get remove -y openwebrx || return 1
+            sed -i '/^openwebrxplus,/d' "${SIGEDGE_INSTALLED}"
+        ;;&
+
+        purge )
+            sudo systemctl disable --now openwebrx.service 2>/dev/null || true
+            sudo apt-get purge -y openwebrx || return 1
+            sudo rm -f "${SOURCES}" "${KEYRING}" || return 1
+            sudo apt-get update || true
+            sed -i '/^openwebrxplus,/d' "${SIGEDGE_INSTALLED}"
+        ;;&
+
+        build|package )
+            echo -e "${SIGEDGE_BANNER_COLOR:-} ##   ${ACTION} option not available (installed from the luarvique PPA)${SIGEDGE_BANNER_RESET:-}"
+        ;;&
+
+        install )
+            ## PPA distribution: luarvique publishes one tree per release,
+            ## each built for that release's Python (python3-csdr pins it).
+            ## Raspberry Pi OS reports ID=debian with the Debian codename.
+            . /etc/os-release
+            case "${VERSION_CODENAME}" in
+                bullseye|bookworm|trixie|jammy|noble ) PPA_DIST="${VERSION_CODENAME}" ;;
+                * )
+                    echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ERROR: no OpenWebRX+ PPA for ${ID} ${VERSION_CODENAME}${SIGEDGE_BANNER_RESET:-}"
+                    return 1
+                ;;
+            esac
+
+            ## DEPENDENCIES
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                curl ca-certificates gnupg || return 1
+
+            ## PACKAGE
+            curl -fsS https://luarvique.github.io/ppa/openwebrx-plus.gpg \
+                | sudo gpg --yes --dearmor -o "${KEYRING}" || return 1
+            echo "deb [signed-by=${KEYRING}] https://luarvique.github.io/ppa/${PPA_DIST} ./" \
+                | sudo tee "${SOURCES}" >/dev/null || return 1
+            sudo apt-get update || return 1
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y openwebrx || return 1
+
+            # The package's postinst enables and starts its unit; SIGedge leaves
+            # every service disabled until an operator picks a side per device.
+            sudo systemctl disable --now openwebrx.service || return 1
+
+            # RX-888 device-node access for the openwebrx service account depends
+            # on which udev rule won: devices/pkg_rx888's 99-rx888.rules gives
+            # 0666 root:plugdev; where ka9q-radio's RX-888 support is installed
+            # the node can instead be 0660 root:radio, which the openwebrx
+            # account can't open without membership (LIBUSB_ERROR_ACCESS, then
+            # a soapy_connector segfault). Join whichever groups exist.
+            sudo usermod -aG plugdev openwebrx || return 1
+            if getent group radio >/dev/null; then
+                sudo usermod -aG radio openwebrx || return 1
+            fi
+
+            if ! grep -q '^openwebrxplus,' "${SIGEDGE_INSTALLED}"; then
+                grep '^openwebrxplus,' "${SIGEDGE_PKGLIST}" >> "${SIGEDGE_INSTALLED}"
+            fi
+
+            echo "OpenWebRX+ installed but not enabled. Next steps:"
+            echo "  RX-888 support:  SIGedge device install rx888mk2-soapy"
+            echo "  Web UI admin:    sudo openwebrx admin adduser <username>"
+            echo "  Enable:          scripts/service_toggle openwebrx"
+        ;;&
+
+        remove|purge|install|build|package )
+            echo -e "${SIGEDGE_BANNER_COLOR:-}"
+            echo -e "${SIGEDGE_BANNER_COLOR:-} ##  ${ACTION} : OpenWebRX+ - Completed"
+            echo -e "${SIGEDGE_BANNER_RESET:-}"
+        ;;
+    esac
+}
+
+# Run without leaking a large implementation function into the parent shell.
+if _sigedge_openwebrxplus_main "$@"; then
+    _sigedge_openwebrxplus_rc=0
+else
+    _sigedge_openwebrxplus_rc=$?
+fi
+unset -f _sigedge_openwebrxplus_main
+
+# When sourced, return to the parent. Direct execution remains usable for testing.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return "${_sigedge_openwebrxplus_rc}"
+else
+    exit "${_sigedge_openwebrxplus_rc}"
+fi

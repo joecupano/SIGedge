@@ -8,7 +8,7 @@
 ###
 ### 20260828-0000
 ###
-### Install shared services (ka9q-radio, OpenWebRX) and prepare selected
+### Install shared services (ka9q-radio, OpenWebRX+) and prepare selected
 ### ka9q-radio receivers. Nothing here is enabled or started -- which
 ### deployment to run, and which receivers to activate, are explicit
 ### operator decisions made after installation.
@@ -24,13 +24,13 @@ echo -e "${SIGEDGE_BANNER_RESET}"
 source "$SIGEDGE_PACKAGES/pkg_fftw" install || return 1
 source "$SIGEDGE_PACKAGES/pkg_rtl_433" install || return 1
 
-# ka9q-radio and OpenWebRX are alternative deployments for the same SDR
-# hardware (see README.md). Both get installed here; pkg_openwebrx leaves
-# its systemd unit disabled, same as ka9q-radio's radiod missions below --
+# ka9q-radio and OpenWebRX+ are alternative deployments for the same SDR
+# hardware (see README.md). Both get installed here; pkg_openwebrxplus leaves
+# openwebrx.service disabled, same as ka9q-radio's radiod missions below --
 # which one to actually run is an explicit operator decision made later.
 
 if grep -qx 'openwebrx' "$SIGEDGE_INSTALLED_SERVICES"; then
-    source "$SIGEDGE_PACKAGES/pkg_openwebrx" install || return 1
+    source "$SIGEDGE_PACKAGES/pkg_openwebrxplus" install || return 1
 fi
 
 # RTL-TCP Server, SDRangel Server, and SoapySDR Server are, like OpenWebRX
