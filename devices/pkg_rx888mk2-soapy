@@ -150,7 +150,7 @@ EOF
             # set includes `unittest`, which fetches a third-party LIBCPPUNIT header via
             # CMake's ExternalProject; that header is missing '#include <cstdint>' and
             # fails to compile under GCC 14 (same class of bug already patched around
-            # elsewhere in packages/pkg_openwebrx). Skipping it avoids an unrelated test
+            # elsewhere in SIGedge's package scripts). Skipping it avoids an unrelated test
             # target breaking every future `SIGedge setup` run. Installing this
             # subdirectory's own cmake_install.cmake directly, rather than the top-level
             # one, likewise avoids failing on OTHER never-built targets (the standalone

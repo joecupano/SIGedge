@@ -302,14 +302,14 @@ sudo systemctl disable radiod@hackrf-aprs
 
 Stopping `radiod` releases the SDR for an explicitly selected direct-access service. Stop that direct-access service before returning the device to ka9q-radio.
 
-### Switching to or from OpenWebRX
+### Switching to or from OpenWebRX+
 
-ka9q-radio and OpenWebRX (`packages/pkg_openwebrxplus`, or the from-source `packages/pkg_openwebrx` with `config/openwebrx.service`; both provide `openwebrx.service`) are alternative deployments for the same SDR hardware and must not both be active. Check current state first with `scripts/device-inventory.sh`, which shows attached devices, every radiod mission's and OpenWebRX's live enabled/active state, and flags it explicitly if both sides are ever active at once. Then switch with `scripts/service_toggle`, which discovers whichever `radiod@<mission>` instances are actually configured or running (it does not assume the reference missions above are the only ones), stops+disables the side being left, and verifies the result against `systemctl` rather than trusting prior state:
+ka9q-radio and OpenWebRX+ (`packages/pkg_openwebrxplus`, which provides `openwebrx.service`) are alternative deployments for the same SDR hardware and must not both be active. Check current state first with `scripts/device-inventory.sh`, which shows attached devices, every radiod mission's and OpenWebRX's live enabled/active state, and flags it explicitly if both sides are ever active at once. Then switch with `scripts/service_toggle`, which discovers whichever `radiod@<mission>` instances are actually configured or running (it does not assume the reference missions above are the only ones), stops+disables the side being left, and verifies the result against `systemctl` rather than trusting prior state:
 
 ```bash
 scripts/device-inventory.sh                       # show current state of both sides (and what's attached)
 scripts/service_toggle ka9q-radio [mission ...]   # switch to ka9q-radio
-scripts/service_toggle openwebrx                  # switch to OpenWebRX
+scripts/service_toggle openwebrx                  # switch to OpenWebRX+
 scripts/service_toggle off                        # stop+disable both
 ```
 
@@ -317,44 +317,29 @@ It prompts before stopping anything currently active (`-y` to skip) and supports
 
 ### RX-888 in OpenWebRX+ — `packages/pkg_openwebrxplus`
 
-`packages/pkg_openwebrx`'s from-source build does not give you a usable
-RX-888: it builds plain `jketterl/openwebrx`, whose only RX-888 path is
-`sddc_connector` (never built) and which has no `sddc_soapy` device type
-at all. Use `packages/pkg_openwebrxplus` instead — OpenWebRX+ from the
-luarvique PPA — validated end-to-end on rubberduck, and on sigedge-mac
-(Ubuntu 24.04, amd64) as a migration from an existing `pkg_openwebrx`
-install:
-
-> As of 2026-09, `packages/pkg_openwebrx`'s general build/install chain
-> itself is fixed and verified working on arm64/Debian Trixie (GCC 14),
-> where it previously failed outright. It remains the option there:
-> the luarvique PPA publishes only Ubuntu `jammy`/`noble` and a Debian
-> `bullseye`/`bookworm` tree, and `pkg_openwebrxplus` refuses anything
-> else.
+`packages/pkg_openwebrxplus` installs OpenWebRX+ from the luarvique PPA,
+which publishes one tree per release — Debian `bullseye`/`bookworm`/
+`trixie` (including Raspberry Pi OS) and Ubuntu `jammy`/`noble` — each
+built for that release's Python; the script refuses anything else.
+Validated end-to-end with the RX-888 on rubberduck and on sigedge-mac
+(Ubuntu 24.04, amd64). SIGedge no longer ships a from-source build of
+plain `jketterl/openwebrx`: it had no `sddc_soapy` device type (its only
+RX-888 path, `sddc_connector`, was never built), so it could not use the
+RX-888 at all.
 
 ```bash
 ./SIGedge install openwebrxplus             # OpenWebRX+ from the PPA, left disabled
 ./SIGedge device install rx888mk2-soapy     # RX-888 SoapySDR module
+sudo openwebrx admin adduser <username>     # web-UI admin account
 scripts/service_toggle openwebrx            # enable + start (stops any radiod missions first)
 ```
 
-1. **`pkg_openwebrxplus` replaces a from-source `pkg_openwebrx` build
-   automatically.** It backs up `/var/lib/openwebrx` to
-   `~/openwebrx-backup-<timestamp>.tar.gz`, removes the source build's
-   `/etc/systemd/system/openwebrx.service` (it would override the
-   package's unit), and removes everything that build put in
-   `/usr/local` — per each component's CMake `install_manifest.txt`
-   (csdr, owrx_connector, codecserver, digiham, m17-cxx-demod) plus the
-   pycsdr/js8py/pydigiham eggs. That step isn't optional: `/usr/local`
-   precedes `/usr` in both `PATH` and Python's `sys.path`, so leftovers
-   silently shadow the PPA's own versions. Existing settings and web-UI
-   users carry over (OpenWebRX+ migrates the settings file), re-owned by
-   the package's `openwebrx` service account. The package's unit name is
-   the same `openwebrx.service`, so `scripts/service_toggle` and
-   `scripts/device-inventory.sh` are unaffected. The PPA's postinst
-   enables and starts the unit; the script disables it again, as every
-   SIGedge service is installed disabled.
-2. RX-888 support comes from OpenWebRX+'s `sddc_soapy` device type,
+The PPA's postinst enables and starts `openwebrx.service`;
+`pkg_openwebrxplus` disables it again, as every SIGedge service is
+installed disabled. `SIGedge setup`'s "OpenWebRX+" service choice runs
+the same script.
+
+1. RX-888 support comes from OpenWebRX+'s `sddc_soapy` device type,
    backed by a SoapySDR module built from **`ON5HB/RX888MK2-Soapy`** —
    CPU-only, no CUDA, no `sddc_connector`. `devices/pkg_rx888mk2-soapy`
    builds and installs it, pinned to the validated commit `9d5e08e`
@@ -370,7 +355,7 @@ scripts/service_toggle openwebrx            # enable + start (stops any radiod m
    end-to-end here, since OpenWebRX+ is this node's only consumer of this
    module (ka9q-radio's own RX-888 support, `devices/pkg_rx888`, stages
    FX3 firmware directly and never goes through SoapySDR at all).
-3. **Device-node access for the `openwebrx` service account** depends on
+2. **Device-node access for the `openwebrx` service account** depends on
    which udev rule owns the RX-888: `devices/pkg_rx888`'s
    `99-rx888.rules` makes it `0666 root:plugdev` in both its DFU
    (`04b4:00f3`) and programmed (`04b4:00f1`) states, but where
@@ -382,7 +367,7 @@ scripts/service_toggle openwebrx            # enable + start (stops any radiod m
    `pkg_openwebrxplus` adds `openwebrx` to `plugdev`, and to `radio` when
    that group exists. Check with `ls -l /dev/bus/usb/<bus>/<dev>` (from
    `lsusb -d 04b4:`).
-4. **DFU mode (`04b4:00f3`) is the expected state before OpenWebRX+ opens
+3. **DFU mode (`04b4:00f3`) is the expected state before OpenWebRX+ opens
    the RX-888** — the SoapySDR module uploads its own firmware on open,
    after which the device re-enumerates as `04b4:00f1 ... RX888mk2`.
    **The FX3 chip holds only one driver stack's firmware at a time,
@@ -398,7 +383,7 @@ scripts/service_toggle openwebrx            # enable + start (stops any radiod m
    unplug the RX-888 for ~15s and replug it — an actual power cycle, not
    a reboot — so the FX3 returns to genuine DFU mode before the next
    owner opens it and uploads its own firmware.
-5. In the web UI (Settings → SDR devices → Add new device), the exact
+4. In the web UI (Settings → SDR devices → Add new device), the exact
    entry is `BBRF103 / RX666 / RX888 / RX888 mkII (SDDC) device (via
    SoapySDR)` — not a generic "SoapySDR device". Sample rate is a fixed
    list only (2/4/8/16/32/64 MS/s; 64.8, `radiod`'s native rate, is
@@ -408,7 +393,7 @@ scripts/service_toggle openwebrx            # enable + start (stops any radiod m
    `sudo systemctl restart openwebrx` before it appears in the receiver
    page — it's saved to `/var/lib/openwebrx/settings.json` immediately,
    it's just the running process's in-memory list that's stale.
-6. **Gain lives in the profile, not the live receiver panel, and an
+5. **Gain lives in the profile, not the live receiver panel, and an
    unset gain can leave the waterfall blank.** Below half the sample
    rate (16 MHz at 32 MS/s) the RX-888 uses its HF direct-sampling path,
    where the two controls work differently (ranges from
@@ -425,7 +410,7 @@ scripts/service_toggle openwebrx            # enable + start (stops any radiod m
    entirely as background color — a scrolling but blank waterfall. Use
    the receiver panel's waterfall auto-adjust, or set the range to
    roughly -130 / -70.
-7. **Packet/APRS decoding needs a working `direwolf`.** OpenWebRX+'s
+6. **Packet/APRS decoding needs a working `direwolf`.** OpenWebRX+'s
    feature report only checks that the binary exists, so a `direwolf`
    that dies at load time (as the prebuilt `debs/direwolf_current_amd64.deb`
    did on Ubuntu 24.04 — linked against `libgps.so.28`, which 24.04

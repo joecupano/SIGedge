@@ -5,9 +5,6 @@ Various config files.
 **blacklist-msi.conf**    - Used by RTLSDR to blacklist drivers
 **banner_sigedge**        - Banner screens called by SIGedge setup
 
-**openwebrx.service**     - Optional Service instead of radiod (switch safely with `scripts/service_toggle`). Used only by
-the from-source `packages/pkg_openwebrx`; `packages/pkg_openwebrxplus` (OpenWebRX+ from the PPA, RX-888 capable) ships its
-own `openwebrx.service` with the same name, and removes this one if present.
 **rtltcp.service**        - Optional direct-access service instead of radiod, deployed by
 `scripts/setup_services` when `rtltcpsrv` is selected. No package script -- just wraps
 `rtl_tcp`, which the rtlsdr device driver already installs. Reads an optional
