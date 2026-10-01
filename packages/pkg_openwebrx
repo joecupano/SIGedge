@@ -192,7 +192,7 @@ case "$1" in
         sed -e "s|@openwebrxdir@|$SIGEDGE_SOURCE/openwebrx|g" \
             "$SIGEDGE_CONFIG/openwebrx.service" | sudo tee /etc/systemd/system/openwebrx.service >/dev/null
         sudo systemctl daemon-reload
-        cat $SIGEDGE_PKGLIST|grep "openwebrx" >> $SIGEDGE_INSTALLED
+        grep "^openwebrx," $SIGEDGE_PKGLIST >> $SIGEDGE_INSTALLED
         ;;&
 
     package )

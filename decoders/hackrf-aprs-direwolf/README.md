@@ -28,26 +28,33 @@ pattern its own man page documents for `rtl_fm | direwolf`.
    systemctl is-active radiod@hackrf-aprs
    ```
 
-2. **`direwolf` must actually run on this host.** On the host this was
-   sketched against, the installed `direwolf` binary fails immediately:
+2. **`direwolf` must actually run on this host.** The prebuilt
+   `debs/direwolf_current_amd64.deb` used to be linked against
+   `libgps.so.28`, which Ubuntu 24.04 doesn't ship (its `libgps30t64`
+   provides only `libgps.so.30`), so the installed binary failed
+   immediately:
 
    ```
    direwolf: error while loading shared libraries: libgps.so.28: cannot open shared object file
    ```
 
-   The installed `libgps30t64` package (Ubuntu 24.04's 64-bit-time_t
-   transition) only provides `libgps.so.30` -- the prebuilt
-   `direwolf_current_amd64.deb` was linked against the older `.so.28`.
-   Rebuilding it locally against the currently installed `libgps-dev`
-   resolves this:
+   As of 2026-09-30 the amd64 package is rebuilt on Ubuntu 24.04, and
+   `packages/pkg_direwolf package` now records the libraries it links
+   against as package `Depends`, so a mismatched `.deb` is refused by
+   `dpkg -i` instead of installing a binary that can't load. A host that
+   installed the older package (or the arm64 one, not yet rebuilt) can
+   still have the broken binary -- rebuild locally against the installed
+   `libgps-dev`:
 
    ```bash
-   source packages/pkg_direwolf build
+   ./SIGedge package direwolf
+   sudo dpkg -i debs/direwolf_current_$(dpkg --print-architecture).deb
    ```
 
    Verify before relying on this bridge:
 
    ```bash
+   ldd "$(command -v direwolf)" | grep 'not found'   # should print nothing
    direwolf --help   # should print usage, not a linker error
    ```
 

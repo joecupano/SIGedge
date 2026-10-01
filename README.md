@@ -69,7 +69,7 @@ Each of the following runs on top of one of the two models above. This section c
 
 **How it fits together:** it's a *direct-access* consumer of the hardware, the same model as SDRangel/GQRX above, so it's mutually exclusive with a `radiod` mission on the same device. The two are alternative deployments for the same radio, switched between with `scripts/service_toggle` rather than run at the same time.
 
-**Setup:** the confirmed-working RX-888 install path (via the luarvique PPA, not `SIGedge install openwebrx`) is documented in KA9Q-DEPLOYMENT.md's ["RX-888 in OpenWebRX+"](KA9Q-DEPLOYMENT.md#rx-888-in-openwebrx-confirmed-working-path-not-packagespkg_openwebrx) section, alongside the switch-over instructions.
+**Setup:** `SIGedge install openwebrxplus` installs OpenWebRX+ from the luarvique PPA (Ubuntu 22.04/24.04, Debian 11/12) — the path that supports the RX-888, together with `SIGedge device install rx888mk2-soapy`. `SIGedge install openwebrx` is the from-source alternative (plain jketterl OpenWebRX, no RX-888) for distributions the PPA doesn't cover, such as Debian Trixie. Details, RX-888 gain settings, and migrating from a from-source install are in KA9Q-DEPLOYMENT.md's ["RX-888 in OpenWebRX+"](KA9Q-DEPLOYMENT.md#rx-888-in-openwebrx--packagespkg_openwebrxplus) section; switch a device between OpenWebRX+ and `radiod` with `scripts/service_toggle`.
 
 ### AI and analytics bridges
 
@@ -162,7 +162,7 @@ SIGedge package <package>
 `./SIGedge setup` (via `scripts/setup_devices`) installs:
 
 - Generic SoapySDR tooling and headers (`soapysdr-tools`, `libsoapysdr-dev`) for applications that link against SoapySDR locally on the same host.
-- The RX-888 SoapySDR driver (SDDC_Driver), for direct-access RX-888 use outside of ka9q-radio.
+- The RX-888 SoapySDR driver (`devices/pkg_rx888mk2-soapy`, built from ON5HB/RX888MK2-Soapy) when the `rx888` device is selected, for direct-access RX-888 use outside of ka9q-radio — i.e. OpenWebRX+. Install it on its own with `SIGedge device install rx888mk2-soapy`.
 - `soapyremote-server` and `soapysdr-module-remote`, for exposing SoapySDR devices to *remote* network clients over SoapyRemote's own protocol.
 
 ### Local direct access

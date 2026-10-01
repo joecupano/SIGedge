@@ -107,7 +107,7 @@ select_services() {
     FUN=$(whiptail --title "Services Installation" --clear --checklist --separate-output \
         "Choose which services to install (see previous screen: pick ONE per radio between ka9q-radio and the direct-access services below)" 20 120 12 \
         "ka9q-radio" "KA9Q-Radio -- shared radio server (multicast)" OFF \
-        "openwebrx" "OpenWebRX -- browser waterfall (direct access, alt. to ka9q-radio)" OFF \
+        "openwebrx" "OpenWebRX+ -- browser waterfall (direct access, alt. to ka9q-radio)" OFF \
         "rtltcpsrv" "RTL-TCP Server (direct access, alt. to ka9q-radio)" OFF \
         "sdrangelsrv" "SDRangel Server (direct access, alt. to ka9q-radio)" OFF \
         "soapysdrsrv" "SoapySDR Server (direct access, alt. to ka9q-radio)" OFF \

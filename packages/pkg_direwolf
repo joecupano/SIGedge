@@ -71,7 +71,7 @@ case "$1" in
 
         sudo cp /usr/local/share/doc/direwolf/scripts/dw-start.sh /usr/local/bin/run_direwolf
         sudo mkdir /usr/local/etc/direwolf
-        sudo cp /usr/local/share/doc        sudo mv *.deb $SIGEDGE_DEBS/direwolf/conf/* /usr/local/etc/direwolf
+        sudo cp /usr/local/share/doc/direwolf/conf/* /usr/local/etc/direwolf
         cat $SIGEDGE_PKGLIST|grep "direwolf" >> $SIGEDGE_INSTALLED
 
         ## DESKTOP
@@ -86,15 +86,41 @@ case "$1" in
 
     package )
         ## PACKAGE
+        sudo apt-get install -y checkinstall
         cd $SIGEDGE_SOURCE
-        git clone https://www.github.com/wb2osz/direwolf.git
+        [[ -d direwolf ]] || git clone https://www.github.com/wb2osz/direwolf.git
         cd direwolf
-        git reset --hard a231971 #v         sudo mv *.deb $SIGEDGE_DEBS1.8.1
-        mkdir build && cd build
+        git reset --hard a231971 # v1.8.1
+        mkdir -p build && cd build
         cmake .. -Wno-dev
         make -j4
-        sudo checkinstall --install=no
-        sudo mv *.deb $SIGEDGE_DEBS
+
+        # Declare the shared libraries this build actually links against
+        # (e.g. libgps30t64 on Ubuntu 24.04 / Debian Trixie). Without this the
+        # .deb carries no Depends, so a package built against a different
+        # libgps soname (the old libgps.so.28 build) installs cleanly and then
+        # fails at runtime -- which OpenWebRX's packet feature check doesn't catch.
+        DW_REQUIRES=$(ldd src/direwolf | awk '/=> \//{print $3}' | xargs -r realpath \
+            | xargs -r dpkg -S 2>/dev/null | cut -d: -f1 | sort -u | paste -sd,)
+        DW_ARCH=$(dpkg --print-architecture)
+        DW_DEB=$SIGEDGE_SOURCE/direwolf/direwolf_1.8.1-1_${DW_ARCH}.deb
+        rm -f "$DW_DEB"
+        # --fstrans=no: checkinstall's default filesystem translation can't
+        # create install dirs that don't exist yet (fails on
+        # /usr/local/share/man/man1), so run a real `make install` instead.
+        sudo checkinstall --install=no --fstrans=no --default \
+            --pkgname=direwolf --provides=direwolf \
+            --pkgversion=1.8.1 --pkgrelease=1 \
+            --maintainer=joe@cupano.com \
+            --requires="$DW_REQUIRES" \
+            --pakdir=$SIGEDGE_SOURCE/direwolf
+        if [[ -f "$DW_DEB" ]]; then
+            sudo mv "$DW_DEB" $SIGEDGE_DEBS/direwolf_current_${DW_ARCH}.deb
+            sudo chown "$USER" $SIGEDGE_DEBS/direwolf_current_${DW_ARCH}.deb
+        else
+            echo -e "${SIGEDGE_BANNER_COLOR} ##  ERROR: checkinstall did not produce $DW_DEB${SIGEDGE_BANNER_RESET}"
+            return 1 2>/dev/null || exit 1
+        fi
 
         ## DESKTOP
         # Add Icon
