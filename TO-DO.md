@@ -16,23 +16,6 @@
 
   Then commit the new `debs/direwolf_current_arm64.deb`.
 
-- [ ] **Validate per-device assignment on real hardware (sigedge-mac).**
-  `scripts/sdr-assign` and its adapters pass `tests/sdr-assign-test.sh`
-  (fake services and devices), but haven't driven real services yet. On
-  this host:
-
-  ```bash
-  scripts/sdr-access install                # sdr group + udev rule; log out and back in after
-  sudo systemctl restart openwebrx          # picks up the new group
-  sudo SIGedge inventory                    # both radios, live holders
-  SIGedge assign adopt                      # record OpenWebRX+'s current devices
-  SIGedge assign hackrf none                # HackRF disabled in OpenWebRX+
-  SIGedge assign hackrf openwebrx           # and back
-  ```
-
-  Check OpenWebRX+'s device list after each step, and that its
-  `settings.json` is still owned by `openwebrx`.
-
 - [ ] **Confirm `RESETFX3` works under both RX-888 firmwares.** The handoff
   (`scripts/handoff/rx888`) resets the FX3 with `fx3_cmd reset`, falling back
   to `fx3_cmd usbreset`. rx888-firmware documents both for its own
@@ -42,13 +25,20 @@
   ka9q-radio installed: assign the RX-888 to `radiod`, then to `openwebrx`,
   and check it re-enumerates as `04b4:00f3` without being unplugged.
 
-- [ ] **Clear this host's driver-check problem.** `scripts/driver-check`
-  reports SoapyHackRF installed twice: SIGedge's build in `/usr/local` and
-  the distro's `soapysdr0.8-module-hackrf`, which currently wins. Remove the
-  distro copy (`sudo apt-get remove soapysdr0.8-module-hackrf`), as
-  `devices/pkg_hackrf` now does on install.
-
 - [ ] **Run shellcheck over the new scripts** (`scripts/sdr-assign`,
   `sdr-access`, `driver-check`, `service_toggle`, `handoff/rx888`,
   `lib/sdr_common.sh`, `adapters/*`). It isn't installed on sigedge-mac, so
   they've only had `bash -n` and the regression test.
+
+## Done
+
+- [x] **Validate per-device assignment on real hardware (sigedge-mac),
+  2026-10-02.** Removed the duplicate `soapysdr0.8-module-hackrf`
+  (`driver-check` clean), installed the `sdr` access model (both devices
+  `root:sdr 660` once the rule was renamed `10-sigedge-sdr.rules`),
+  adopted OpenWebRX+'s devices, and moved the HackRF out of OpenWebRX+ and
+  back. Its entry returned pinned to its serial with all three profiles, the
+  RX-888's gain and waterfall settings and all other settings were
+  unchanged, and `settings.json` stayed owned by `openwebrx`. Not exercised:
+  `radiod` and `rtltcp` adapters (neither installed here) and the RX-888
+  handoff (see above).
