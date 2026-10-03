@@ -12,12 +12,18 @@ tests/sdr-assign-test.sh      # exit 0 = all checks passed
 It runs in a temporary sandbox, with no root, hardware or real services
 needed:
 
-- fake sysfs entries for an RTL-SDR, a HackRF and an RX-888;
+- fake sysfs entries for an RTL-SDR, a HackRF and an RX-888, including a
+  USB 3 socket with its USB 2 peer port, so a reset RX-888 re-enumerates
+  from `4-4` to `3-4` the way the real one does;
 - fake `sudo`, `systemctl`, `fuser` and `fx3_cmd` on `PATH`;
 - the scripts' config paths redirected into the sandbox (`SDR_SYSFS_USB`,
   `SDR_ASSIGNMENTS`, `KA9Q_CONFIG_DIR`, `RTLTCP_ENV`, `OWRX_SETTINGS`).
 
-It covers adopting existing claims, moving each device between `radiod`,
-OpenWebRX+ and `rtl_tcp`, the RX-888 firmware handoff and `rx888_boot`
-masking, the whole-host guard for SDRangel server, invalid requests, all
-three `service_toggle` modes, and the inventory's JSON and warnings.
+Its 44 checks cover: adopting existing claims; moving each device between
+`radiod`, OpenWebRX+ and `rtl_tcp`; the RX-888 firmware handoff, its id
+staying the same across the USB 2/3 bus change, and `rx888_boot` masking; a
+failed handoff leaving the device recorded as unassigned; `rx888_boot`
+reloading firmware before the bootloader is seen; only one RX-888 entry
+enabled in OpenWebRX+; the whole-host guard for SDRangel server; invalid
+requests; all three `service_toggle` modes; and the inventory's JSON and
+warnings.

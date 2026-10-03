@@ -27,7 +27,10 @@ and `ft8-jt9` don't have that luxury — their operating frequency is a
 real band/site choice, so those three require adding a channel yourself
 first via `scripts/ka9q-radio-builder` (see each bridge's README for a
 starting-point frequency and why `cfg_ka9q-radio` itself can't generate
-one for you). `ft8-jt9` is also structurally different from the other
+one for you). Then start that mission by assigning its device to it --
+`SIGedge assign <device> radiod:<mission>` -- rather than with the
+builder's own start toggle, so the device is released from any other
+service first and the assignment record stays correct. `ft8-jt9` is also structurally different from the other
 three: `jt-decoded` is a native ka9q-radio multicast client, not a shell
 pipe through `pcmrecord`/`sox` — see its README.
 

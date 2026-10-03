@@ -59,4 +59,5 @@ join radiod's live multicast groups:
   disabled by default**, an explicit operator opt-in, not auto-enabled.
   It's a new pathway for RF traffic to leave the node (into an LLM,
   local or not); treat enabling it with the same deliberateness as
-  enabling a `radiod@<instance>` mission or SoapyRemote.
+  assigning a device to a `radiod` mission (`SIGedge assign`) or enabling
+  SoapyRemote.

@@ -20,6 +20,8 @@ for what's actually in the air near you before picking a frequency.
    [scripts/README.md](../../scripts/README.md)) —
    `cfg_ka9q-radio` itself only regenerates the three fixed reference
    templates and none of them is a 400-406 MHz mission.
+   Start the mission by assigning its device to it:
+   `SIGedge assign <device> radiod:<mission>`.
 
 2. **`rs41dm_dft` must actually be installed.** `pkg_radiosonde` is not
    part of `scripts/setup_decoders` today (it's commented out there),

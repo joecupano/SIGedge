@@ -6,8 +6,8 @@ Various config files.
 every supported SDR's USB node is `0660 root:sdr` in every state (RX-888 bootloader and firmware
 modes included), overriding the vendor rules' mix of `plugdev` 0666 and `radio` 0660. Named
 `10-` because udev keeps the first `:=` assignment to a key, and several vendor rules lock
-`MODE` with `:=`. Service
-accounts join the `sdr` group via `scripts/sdr-access sync`.
+`MODE` with `:=` (`99-rx888.rules`, ka9q-radio's `71-rx888.rules`, `60-libmirisdr4.rules`).
+Service accounts join the `sdr` group via `scripts/sdr-access sync`.
 **blacklist-msi.conf**    - Used by RTLSDR to blacklist drivers
 **banner_sigedge**        - Banner screens called by SIGedge setup
 

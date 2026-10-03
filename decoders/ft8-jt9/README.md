@@ -23,6 +23,8 @@ radiod@<mission> --RTP/multicast--> jt-decoded --<wav captures>--> jt9 --> decod
    frequency.** Same gap as `freedv-hf`/`radiosonde-rs41` — no reference
    mission covers this; add one with `scripts/ka9q-radio-builder` (see
    [scripts/README.md](../../scripts/README.md)).
+   Start the mission by assigning its device to it:
+   `SIGedge assign <device> radiod:<mission>`.
    **14.074 MHz USB** is the universally used 20m FT8 dial frequency and
    the standard starting point — unlike FreeDV's "commonly used" calling
    frequency, this one is a fixed, near-universal convention across the

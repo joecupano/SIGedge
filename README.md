@@ -199,7 +199,7 @@ SIGedge package <package>
 
 ### Local direct access
 
-An application built against SoapySDR (or a device-specific tool such as `rtl_tcp`, `hackrf_transfer`, `hackrf_info`) can open a locally attached, supported SDR directly once its driver package is installed via `SIGedge device install <device>`. No additional SIGedge service needs to be enabled for this — it's just the application and the hardware.
+An application built against SoapySDR (or a device-specific tool such as `rtl_tcp`, `hackrf_transfer`, `hackrf_info`) can open a locally attached, supported SDR directly once its driver package is installed via `SIGedge device install <device>`. No additional SIGedge service needs to be enabled for this — it's just the application and the hardware. Two conditions: your login must be in the `sdr` group (added by setup; takes effect at your next login), and the device must not be owned by a service — check with `SIGedge inventory`, and release it first with `SIGedge assign <device> none`, otherwise the application and the service fight over it.
 
 ### Remote direct access (SoapyRemote)
 

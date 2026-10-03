@@ -8,6 +8,15 @@ SIGedge project does its utmost to ensure the most recent stable releases for pa
 
 When running **SIGedge package <PACKAGE>** the resulting debian packages are stored in the **debs** directory.
 
+A prebuilt `.deb` must declare the shared libraries it links against as
+`Depends`. Without them, a package built on one release installs cleanly on
+another and then fails at run time: `debs/direwolf_current_*.deb` was linked
+against `libgps.so.28` and silently broke APRS decoding on Ubuntu 24.04.
+`pkg_direwolf package` derives its `--requires` from `ldd` on the built
+binary (each library mapped to its owning package with `dpkg -S`); do the
+same for other checkinstall-built packages. `scripts/driver-check` catches
+binaries that already can't load.
+
 ## PACKAGES file format
 
 One line per package, comma-separated:

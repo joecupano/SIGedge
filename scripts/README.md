@@ -27,7 +27,10 @@ disabled; a service starts when a device is assigned to it with
 ## Services ##
 - **cfg_ka9q-radio**
 Directly sourced by **setup_services** during **SIGedge setup**.
-Reachable via **SIGedge config ka9q-radio <mission>**. 
+Reachable via **SIGedge config ka9q-radio <mission>**. Generates mission
+configs only; start a mission by assigning its device to it
+(`SIGedge assign hackrf radiod:hackrf-aprs`). Its `KA9Q_ENABLE_SERVICES` /
+`KA9Q_START_SERVICES` options still exist but bypass the device handoff.
 
 - **ka9q-radio-builder**
 Standalone Python/[Textual](https://textual.textualize.io/) editor for
@@ -37,7 +40,9 @@ add/change/delete/update over the complete config: a mission list (`n`
 new, `d` delete) on the left with live enabled/active state, and on the
 right a tree of the selected mission's actual sections and keys (`a` add
 a section/key, `c` change a value, `x` delete, `w` write to disk with a
-backup, `s`/`t` toggle enable/start). Parses each file with `configparser`
+backup, `s`/`t` toggle enable/start -- these bypass `SIGedge assign`'s
+handoff and assignment record, so prefer `SIGedge assign` for starting and
+stopping missions). Parses each file with `configparser`
 (order- and case-preserving, values kept exactly as written) and writes
 directly via `sudo tee` with a timestamped backup first -- it does not go
 through `cfg_ka9q-radio`, which can only regenerate its three fixed
@@ -110,7 +115,11 @@ adding a file here and its name to `SDR_SERVICES` in `lib/sdr_common.sh`.
 Device-type hooks run between release and acquire. `handoff/rx888` masks
 ka9q-radio's `rx888_boot.service` unless `radiod` is the new owner, then
 resets the FX3 to its bootloader with `fx3_cmd reset` (RESETFX3), falling
-back to `fx3_cmd usbreset`, so the next owner loads its own firmware. HackRF
+back to `fx3_cmd usbreset`, so the next owner loads its own firmware. It
+waits until the device is back -- in bootloader mode, or at a new USB
+address when `rx888_boot` has already reloaded ka9q's firmware --
+(`RX888_HANDOFF_WAIT`, default 15 s), and finds it by id across the USB 2/3
+bus change. Confirmed on real hardware under both RX-888 firmwares. HackRF
 and RTL-SDR need no handoff.
 
 - **lib/sdr_common.sh**

@@ -20,8 +20,8 @@ An SDR has exactly one owning service at a time. Assign each device to a `radiod
 |---|---|---|
 | RX-888 host preparation | `devices/pkg_rx888` | Builds and stages volatile FX3 firmware, installs udev rules and `fx3_cmd` (FX3 reset tool), configures USB buffering, and records a manifest |
 | ka9q-radio package lifecycle | `packages/pkg_ka9q-radio` | Installs dependencies; builds, packages, installs, removes, or purges ka9q-radio; validates optional RX-888 preparation |
-| Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations and optionally enables or starts their services |
-| Radio mission configuration (TUI) | `scripts/ka9q-radio-builder` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control. Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
+| Radio mission configuration | `scripts/cfg_ka9q-radio` | Generates RX-888, HackRF, and RTL-SDR configurations. It can also enable/start them (`KA9Q_ENABLE_SERVICES`/`KA9Q_START_SERVICES`), but that bypasses the device handoff -- start a mission with `SIGedge assign` instead |
+| Radio mission configuration (TUI) | `scripts/ka9q-radio-builder` | Interactive Python/Textual editor for `radiod@<instance>.conf` files: full add/change/delete of missions, sections, and keys, plus live enable/start control (which, like starting a unit by hand, bypasses `SIGedge assign`'s handoff). Writes files directly (does not go through `cfg_ka9q-radio`) -- see its module docstring for why |
 | Reference configurations | `config/radiod@<instance>.conf` | Shows the current generated configuration shape |
 | Device assignment | `scripts/sdr-assign` (`SIGedge assign`) | Assigns one device to one service: releases the old owner, verifies the device is free, runs the device's handoff, pins and starts the new owner, and records it in `/etc/sigedge/assignments`. The `radiod` adapter (`scripts/adapters/radiod`) pins the mission's `serial =` and starts `radiod@<mission>` |
 | RX-888 handoff | `scripts/handoff/rx888` | Resets the FX3 to its bootloader between owners and masks `rx888_boot.service` unless `radiod` is the new owner |
@@ -34,7 +34,7 @@ Package installation and radio mission configuration are intentionally separate.
 
 The repository is not yet a fully reproducible production deployment:
 
-- `packages/pkg_ka9q-radio install` expects a populated `debs/ka9q-radio/` directory (one `.deb` per binary package SIGedge builds; see step 2). It now ships both amd64 and arm64 prebuilt packages there, matching the rest of `debs/`'s dual-arch convention (e.g. `debs/codec2_current_*.deb`). Both `install` and the `setup_services` check that decides between installing packages vs. building from source filter to the host's own arch -- a real bug fixed 2026-09 (they used to accept or merely check for *any* `.deb` regardless of architecture, so an arm64 host with only a committed amd64 build would get fed an unsatisfiable amd64 install instead of falling back to building from source). A checkout missing packages for the current arch still needs the `package` action run (or `build`, or the directory supplied separately).
+- `packages/pkg_ka9q-radio install` expects a populated `debs/ka9q-radio/` directory (one `.deb` per binary package SIGedge builds; see step 2). It now ships both amd64 and arm64 prebuilt packages there (built on Debian Trixie; the amd64 set also installs and runs on Ubuntu 24.04, confirmed on sigedge-mac 2026-10-03), matching the rest of `debs/`'s dual-arch convention (e.g. `debs/codec2_current_*.deb`). Both `install` and the `setup_services` check that decides between installing packages vs. building from source filter to the host's own arch -- a real bug fixed 2026-09 (they used to accept or merely check for *any* `.deb` regardless of architecture, so an arm64 host with only a committed amd64 build would get fed an unsatisfiable amd64 install instead of falling back to building from source). A checkout missing packages for the current arch still needs the `package` action run (or `build`, or the directory supplied separately).
 - ka9q-radio's own upstream `debian/` packaging defines build dependencies (`libfobos-dev`, `libhydrasdr-dev`) that are not packaged for Ubuntu 24.04 at all. `packages/pkg_ka9q-radio package` works around this by excluding the binary packages that need them (`ka9q-radio-fobos`, `ka9q-radio-hydrasdr`) from the build rather than trying to satisfy them.
 - `packages/pkg_ka9q-radio` pins ka9q-radio to a fixed commit via `KA9Q_RADIO_REF` rather than following upstream `main`, so it can lag behind current upstream until that pin is updated deliberately.
 - RX-888 firmware also defaults to its upstream `main` branch unless `RX888_FW_REF` is set.
@@ -44,7 +44,7 @@ Regardless of installation path, SIGedge does not start a radio receiver by defa
 
 ## Prerequisites
 
-The current target is Ubuntu Server 24.04 LTS on amd64/x86_64 or arm64/aarch64. The host needs:
+The current target is Ubuntu Server 24.04 LTS or Debian 13 (Trixie, including Raspberry Pi OS) on amd64/x86_64 or arm64/aarch64. The host needs:
 
 - `sudo` privileges
 - working package and source-network access
@@ -67,7 +67,7 @@ mkdir -p /tmp/sigedge-build
 SIGEDGE_SOURCE=/tmp/sigedge-build source devices/pkg_rx888 install
 ```
 
-To build and stage firmware without attached-hardware validation:
+With an RX-888 attached, `install` validates the new firmware on it with `fw_test.sh`, which uploads that firmware to the device. It skips this automatically (manifest `RX888_VALIDATION="skipped-in-use"`) when the RX-888 is assigned to a service or held open, since the upload would replace the firmware its owner loaded. To skip validation explicitly:
 
 ```bash
 mkdir -p /tmp/sigedge-build
@@ -208,7 +208,7 @@ sudo sed -n '1,240p' /etc/radio/radiod@hackrf-aprs.conf
 | `HACKRF_CENTER_HZ` | HackRF hardware center frequency | `144640000` |
 | `RTLSDR_CENTER_HZ` | RTL-SDR hardware center frequency | `146770000` |
 
-Serial overrides should be used only when supported by the installed ka9q-radio front end.
+Serial overrides should be used only when supported by the installed ka9q-radio front end. Once a device is assigned with `SIGedge assign`, the `radiod` adapter manages the mission's `serial =` line itself: it pins HackRF and RTL-SDR missions to the assigned device's serial, and removes it from RX-888 missions, because an RX-888's serial depends on its firmware.
 
 ### Interactive alternative
 
@@ -223,7 +223,7 @@ It supports full add/change/delete/update over the complete config surface:
 | `c` | Change the value of the key under the cursor |
 | `x` | Delete the key or section under the cursor |
 | `w` | Write the mission's config to disk (with a confirmation preview) |
-| `s` / `t` | Toggle enabled-at-boot / toggle running now, for the selected mission |
+| `s` / `t` | Toggle enabled-at-boot / toggle running now, for the selected mission (bypasses `SIGedge assign`: no handoff, assignment record not updated) |
 | `r` | Refresh status |
 | Tab | Switch focus between the mission list and the config tree |
 
@@ -297,13 +297,14 @@ ever disagrees with NETWORKING.md's table, suspect `/etc/hosts`'s SIGedge block 
 `scripts/cfg_ka9q-radio`'s `sync_static_hosts`) -- `status`'s static address depends on it
 in a way `data`'s doesn't.
 
-For hardware checks, stop any service that owns the device first, then use the appropriate tool:
+To see what's attached and who owns it without opening anything, use `SIGedge inventory` and `lsusb -t`. Tools that open the device (`hackrf_info`, `rtl_test`) interrupt whichever service owns it, so release it first:
 
 ```bash
-hackrf_info
-timeout 10 rtl_test -t
-lsusb
+SIGedge inventory                   # attached devices, owners, live holders -- opens nothing
 lsusb -t
+SIGedge assign hackrf none          # release, then probe
+hackrf_info
+SIGedge assign hackrf radiod:hackrf-aprs
 ```
 
 ## 7. Stop or disable a receiver
@@ -409,7 +410,10 @@ the same script.
    `rx888_boot.service` unless `radiod` is the new owner, then sends
    `RESETFX3` (vendor request `0xB1`, `fx3_cmd reset`) to reboot the FX3
    to its bootloader, falling back to a host-side USB reset (`fx3_cmd
-   usbreset`), and waits for `04b4:00f3`. Only if both fail does it ask
+   usbreset`), and waits for the device to come back: in bootloader mode
+   (`04b4:00f3`), or at a new USB address, because when `radiod` is the
+   new owner `rx888_boot` can reload ka9q's firmware within a second,
+   before `00f3` is ever seen. Only if both fail does it ask
    for the old fix: unplug the RX-888 for ~15 s and replug it — an
    actual power cycle, not a reboot. The handoff needs exactly one
    attached RX-888 (`fx3_cmd` talks to the first one it finds). The
@@ -421,8 +425,10 @@ the same script.
    identifies an RX-888 by its physical socket, using the USB 2 side's
    path (`port:3-4` on sigedge-mac), which the kernel links to its USB 3
    peer, so the id holds through a handoff as long as the RX-888 stays
-   in the same socket. `RESETFX3` confirmed working on sigedge-mac with
-   RX888MK2-Soapy's firmware loaded (2026-10-02).
+   in the same socket. `RESETFX3` is confirmed on sigedge-mac under both
+   firmwares, RX888MK2-Soapy's (2026-10-02) and ka9q-radio's (2026-10-03):
+   the RX-888 moves between OpenWebRX+ and `radiod` in both directions
+   without being unplugged.
 4. In the web UI (Settings → SDR devices → Add new device), the exact
    entry is `BBRF103 / RX666 / RX888 / RX888 mkII (SDDC) device (via
    SoapySDR)` — not a generic "SoapySDR device". Sample rate is a fixed
@@ -459,6 +465,9 @@ the same script.
    openwebrx` hang until its 90 s stop timeout. Check with
    `ldd "$(command -v direwolf)" | grep 'not found'`; fix with
    `./SIGedge package direwolf && sudo dpkg -i debs/direwolf_current_$(dpkg --print-architecture).deb`.
+   Both committed packages (amd64, arm64) were rebuilt against `libgps30`
+   in 2026-09/10 and now declare their `Depends`, so a mismatched one is
+   refused at install instead of failing at run time.
 
 ## Troubleshooting
 

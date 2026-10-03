@@ -15,9 +15,10 @@
   RX-888's gain and waterfall settings and all other settings were
   unchanged, and `settings.json` stayed owned by `openwebrx`. Both radios
   streamed in the web UI afterwards (HackRF on SIGedge's SoapyHackRF, RX-888
-  through the `sdr` group). Not exercised:
-  `radiod` and `rtltcp` adapters (neither installed here) and the RX-888
-  handoff (see above).
+  through the `sdr` group). The `radiod` adapter and the RX-888 handoff
+  were exercised later (below); the `rtltcp`, `sdrangelsrv` and
+  `soapysdrsrv` adapters have only run in `tests/sdr-assign-test.sh`, since
+  none of those services is installed on sigedge-mac.
 
 - [x] **shellcheck, 2026-10-02.** shellcheck 0.10.0 over `sdr-assign`,
   `sdr-access`, `driver-check`, `service_toggle`, `device-inventory.sh`,
@@ -46,6 +47,12 @@
   the RX-888 to its bootloader with no fallback and no error, `assign rx888
   openwebrx` reused the original entry (gain kept), the id stayed `port:3-4`
   across both buses, and OpenWebRX+ reloaded its firmware and streamed.
+
+- [x] **RX-888 USB buffer limit survives reboots, 2026-10-03.**
+  `usbfs_memory_mb` was back at 16 MB on sigedge-mac, because `usbcore` is
+  built into the Ubuntu kernel and `/etc/modprobe.d/usbcore.conf` never
+  applies. `pkg_rx888` now also writes `/etc/tmpfiles.d/sigedge-usbfs.conf`,
+  which sets 0 at every boot (`2d4088e`).
 
 - [x] **`RESETFX3` under ka9q-radio's firmware, 2026-10-03.** On
   sigedge-mac, with ka9q-radio installed: `SIGedge assign rx888

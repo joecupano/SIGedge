@@ -2,7 +2,7 @@
 
 Feeds `radiod@hackrf-aprs`'s demodulated FM audio into `direwolf` for
 AX.25/APRS decoding, instead of leaving that multicast group unread. See
-the top-level README's [ka9q-radio section](../../README.md#ka9q-radio-shared-radio-server)
+the top-level README's [ka9q-radio section](../../README.md#ka9q-radio--shared-radio-server)
 for the "decoders" branch this fills in.
 
 ## How it works
@@ -43,8 +43,9 @@ pattern its own man page documents for `rtl_fm | direwolf`.
    `packages/pkg_direwolf package` now records the libraries it links
    against as package `Depends`, so a mismatched `.deb` is refused by
    `dpkg -i` instead of installing a binary that can't load. A host that
-   installed the older package (or the arm64 one, not yet rebuilt) can
-   still have the broken binary -- rebuild locally against the installed
+   installed the older package can still have the broken binary (the arm64
+   package was rebuilt the same way on 2026-10-02) -- rebuild locally
+   against the installed
    `libgps-dev`:
 
    ```bash

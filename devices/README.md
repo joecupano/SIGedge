@@ -25,7 +25,15 @@ The device kinds SIGedge can assign to services (`SIGedge assign`, see
   hook in `scripts/handoff/<kind>`. The RX-888 is the one today: its FX3 keeps
   the last owner's firmware, so `pkg_rx888` installs `fx3_cmd`
   (`/usr/local/bin`), which `scripts/handoff/rx888` uses to reset it to the
-  bootloader.
+  bootloader. `pkg_rx888` also keeps `usbfs_memory_mb=0` across reboots
+  with `/etc/tmpfiles.d/sigedge-usbfs.conf` (`usbcore` is built into the
+  Ubuntu/Debian kernel, so its `modprobe.d` option alone never applies).
+- **Don't disturb a device another service owns.** An install script must
+  not open a device that's assigned or held: opening one interrupts its
+  owner, and for the RX-888 can replace its firmware. Report hardware with
+  `scripts/device-inventory.sh` (sysfs only) rather than `hackrf_info` or
+  `rtl_test`; `pkg_rx888` skips its `fw_test.sh` validation when the RX-888
+  is assigned or held (`RX888_VALIDATION="skipped-in-use"`).
 
 ## DEVICES file format
 

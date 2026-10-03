@@ -23,6 +23,8 @@ that channel yourself before this bridge has anything to decode.
    commonly used international FreeDV calling frequency and a reasonable
    starting point on an HF-capable front end (RX-888); it's a convention,
    not a guarantee anyone is transmitting there when you listen.
+   Start the mission by assigning its device to it:
+   `SIGedge assign <device> radiod:<mission>`.
 
 2. **`freedv_rx` must actually be built.** The Ubuntu-archive `codec2`
    apt package (visible as just `codec2` in `dpkg -l` on a stock system)
