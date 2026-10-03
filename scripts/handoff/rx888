@@ -49,14 +49,25 @@ BOOT_UNIT="rx888_boot.service"
 
 # Product id (00f1 firmware / 00f3 bootloader) of the device with this id,
 # empty while it's off the bus during re-enumeration.
-pid_of_id() { sdr_find_id "$id" | awk -F'|' '{split($2, v, ":"); print v[2]}'; }
+pid_of_id()     { sdr_find_id "$id" | awk -F'|' '{split($2, v, ":"); print v[2]}'; }
+# Bus:device address -- changes every time the device re-enumerates.
+address_of_id() { sdr_find_id "$id" | awk -F'|' '{print $4 ":" $5}'; }
 
-wait_for_bootloader()
+# Success is the FX3 having rebooted: seen in bootloader mode, or back at a
+# new USB address. When radiod is the new owner, rx888_boot can load ka9q's
+# firmware within a second of the bootloader appearing, so 00f3 may never
+# be observed -- the new address is the evidence then.
+wait_for_reboot()
 {
-    local i
+    local before="$1" i now
     # RX888_HANDOFF_WAIT: seconds to wait for re-enumeration (tests shorten it).
     for (( i = 0; i < ${RX888_HANDOFF_WAIT:-15}; i++ )); do
-        [[ "$(pid_of_id)" == "00f3" ]] && return 0
+        [[ "$(pid_of_id)" == "00f3" ]] && { echo "  rx888: in bootloader mode (04b4:00f3)"; return 0; }
+        now="$(address_of_id)"
+        if [[ -n "$now" && "$now" != "$before" ]]; then
+            echo "  rx888: re-enumerated as $(pid_of_id) (firmware reloaded by its new owner)"
+            return 0
+        fi
         sleep 1
     done
     return 1
@@ -93,19 +104,15 @@ if [[ -z "$FX3_CMD" ]]; then
 fi
 
 echo "  rx888: resetting FX3 to bootloader (RESETFX3)"
+before="$(address_of_id)"
 sdr_sudo "$FX3_CMD" reset
 [[ "${SDR_DRY_RUN:-0}" == "1" ]] && exit 0
-if wait_for_bootloader; then
-    echo "  rx888: in bootloader mode (04b4:00f3)"
-    exit 0
-fi
+wait_for_reboot "$before" && exit 0
 
 echo "  rx888: RESETFX3 didn't take; trying a host-side USB reset"
+before="$(address_of_id)"
 sdr_sudo "$FX3_CMD" usbreset
-if wait_for_bootloader; then
-    echo "  rx888: in bootloader mode (04b4:00f3)"
-    exit 0
-fi
+wait_for_reboot "$before" && exit 0
 
 sdr_err "the RX-888 (${id}) is still running firmware; unplug it for ~15 s, plug it back in, and rerun"
 exit 1

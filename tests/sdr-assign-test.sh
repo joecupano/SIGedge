@@ -168,6 +168,19 @@ check "device recorded as unassigned"        bash -c "! grep -q '^rx888 ' '$H/as
 check "previous owner was released"          python3 -c "import json,sys; d=json.load(open('$H/owrx.json')); sys.exit(1 if any(v['type']=='sddc_soapy' and v.get('enabled',True) for v in d['sdrs'].values()) else 0)"
 rx888_bootloader
 
+echo "5c. rx888_boot reloads firmware before the handoff sees the bootloader"
+cat >"$H/bin/fx3_cmd" <<'EOF'
+#!/bin/bash
+# Reset, then straight back to firmware mode at a new USB address.
+d="$HARNESS/sys/4-4"; [ "$1" = reset ] && [ -d "$d" ] && echo $(( $(cat "$d/devnum") + 1 )) >"$d/devnum"
+exit 0
+EOF
+rx888_firmware
+"$A" -y rx888 openwebrx >/dev/null 2>&1
+RX888_HANDOFF_WAIT=2 "$A" -y rx888 radiod:rx888-wwv >/dev/null 2>&1; rc=$?
+check "re-enumeration counts as a reset"     test "$rc" -eq 0
+check "record: rx888 -> radiod"              record_is "rx888 $RX radiod rx888-wwv"
+
 echo "6. Invalid requests"
 check "rtltcp can't take an RX-888"          bash -c "! '$A' -y rx888 rtltcp"
 check "unknown service rejected"             bash -c "! '$A' -y rx888 nosuchsvc"
