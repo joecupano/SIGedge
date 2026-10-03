@@ -81,8 +81,15 @@ The script installs or creates:
 /usr/local/share/ka9q-radio/SDDC_FX3.img
 /etc/udev/rules.d/99-rx888.rules
 /etc/modprobe.d/usbcore.conf
+/etc/tmpfiles.d/sigedge-usbfs.conf
+/usr/local/bin/fx3_cmd
 /var/lib/rx888/rx888-prep.env
 ```
+
+`usbcore` is built into Ubuntu's and Debian's kernels, so the `modprobe.d`
+option alone never takes effect there: the limit silently stays at the
+default 16 MB after every reboot (found on sigedge-mac). The `tmpfiles.d`
+entry writes `usbfs_memory_mb=0` at every boot instead.
 
 Firmware is staged on the host and loaded into volatile FX3 RAM. The script does not permanently flash EEPROM or SPI storage.
 
@@ -91,7 +98,7 @@ Check the result with:
 ```bash
 cat /var/lib/rx888/rx888-prep.env
 ls -l /usr/local/share/ka9q-radio/SDDC_FX3.img
-cat /sys/module/usbcore/parameters/usbfs_memory_mb
+cat /sys/module/usbcore/parameters/usbfs_memory_mb   # must be 0, also after a reboot
 lsusb -t
 ```
 

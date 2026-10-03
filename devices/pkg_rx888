@@ -52,6 +52,10 @@ _sigedge_rx888_main() {
     local UDEV_INSTALL="${SYSROOT}/etc/udev/rules.d/99-rx888.rules"
     local FX3_CMD_INSTALL="${SYSROOT}/usr/local/bin/fx3_cmd"
     local USB_CONF="${SYSROOT}/etc/modprobe.d/usbcore.conf"
+    # usbcore is built into Ubuntu's and Debian's kernels, so the modprobe.d
+    # option above never applies there; systemd-tmpfiles writes the value at
+    # every boot instead, built in or not.
+    local USB_TMPFILES="${SYSROOT}/etc/tmpfiles.d/sigedge-usbfs.conf"
     local MANIFEST="${SYSROOT}/var/lib/rx888/rx888-prep.env"
     local VALIDATE="${RX888_VALIDATE:-1}"
     local FW_COMMIT=""
@@ -103,6 +107,7 @@ _sigedge_rx888_main() {
             sudo rm -f "${FX3_CMD_INSTALL}" || return 1
             sudo rm -f "${UDEV_INSTALL}" || return 1
             sudo rm -f "${USB_CONF}" || return 1
+            sudo rm -f "${USB_TMPFILES}" || return 1
             sudo rm -f "${MANIFEST}" || return 1
             sudo rmdir "${SYSROOT}/var/lib/rx888" 2>/dev/null || true
             rm -rf "${SRC_DIR}" || return 1
@@ -158,6 +163,9 @@ _sigedge_rx888_main() {
                 '# RX-888 MkII high-rate USB3 streaming' \
                 '# 0 removes the usbfs per-device memory ceiling.' \
                 'options usbcore usbfs_memory_mb=0' | sudo tee "${USB_CONF}" >/dev/null || return 1
+            printf '%s\n' \
+                '# RX-888 MkII: no usbfs memory ceiling, applied at every boot' \
+                'w /sys/module/usbcore/parameters/usbfs_memory_mb - - - - 0' | sudo tee "${USB_TMPFILES}" >/dev/null || return 1
 
             sudo udevadm control --reload-rules || return 1
             sudo udevadm trigger || return 1
@@ -238,6 +246,9 @@ _sigedge_rx888_main() {
                 '# RX-888 MkII high-rate USB3 streaming' \
                 '# 0 removes the usbfs per-device memory ceiling.' \
                 'options usbcore usbfs_memory_mb=0' | sudo tee "${USB_CONF}" >/dev/null || return 1
+            printf '%s\n' \
+                '# RX-888 MkII: no usbfs memory ceiling, applied at every boot' \
+                'w /sys/module/usbcore/parameters/usbfs_memory_mb - - - - 0' | sudo tee "${USB_TMPFILES}" >/dev/null || return 1
 
             sudo udevadm control --reload-rules || return 1
             sudo udevadm trigger || return 1
@@ -295,7 +306,8 @@ _sigedge_rx888_main() {
                 "${PKGROOT}/DEBIAN" \
                 "${PKGROOT}${FW_INSTALL_DIR}" \
                 "${PKGROOT}/etc/udev/rules.d" \
-                "${PKGROOT}/etc/modprobe.d" || return 1
+                "${PKGROOT}/etc/modprobe.d" \
+                "${PKGROOT}/etc/tmpfiles.d" || return 1
 
             install -m 0644 "${FW_BUILD}" "${PKGROOT}${FW_INSTALL}" || return 1
             install -m 0644 "${UDEV_SOURCE}" "${PKGROOT}${UDEV_INSTALL}" || return 1
@@ -304,6 +316,10 @@ _sigedge_rx888_main() {
 # RX-888 MkII high-rate USB3 streaming
 # 0 removes the usbfs per-device memory ceiling.
 options usbcore usbfs_memory_mb=0
+PKGEOF
+            cat > "${PKGROOT}${USB_TMPFILES}" <<'PKGEOF'
+# RX-888 MkII: no usbfs memory ceiling, applied at every boot
+w /sys/module/usbcore/parameters/usbfs_memory_mb - - - - 0
 PKGEOF
 
             cat > "${PKGROOT}/DEBIAN/control" <<PKGEOF
