@@ -1,0 +1,71 @@
+# shellcheck shell=bash
+###
+### SIGedge adapter: openwebrx (OpenWebRX+, packages/pkg_openwebrxplus)
+###
+### One service, many devices. OpenWebRX+'s own device list
+### (/var/lib/openwebrx/settings.json) is made to match the devices
+### assigned to it: assigned entries enabled and pinned by serial,
+### everything else disabled. OpenWebRX+ opens a device only while a
+### listener uses it, so an idle assignment shows no live holder.
+###
+
+OWRX_UNIT="openwebrx.service"
+OWRX_SETTINGS="${OWRX_SETTINGS:-/var/lib/openwebrx/settings.json}"
+OWRX_HELPER="${SDR_ADAPTER_DIR}/owrx_settings.py"
+
+adapter_kinds()      { echo "rx888 hackrf rtlsdr"; }
+adapter_whole_host() { return 1; }
+adapter_installed()  { sdr_unit_exists "$OWRX_UNIT"; }
+adapter_units()      { echo "$OWRX_UNIT"; }
+
+adapter_claims()
+{
+    sdr_unit_enabled "$OWRX_UNIT" || sdr_unit_active "$OWRX_UNIT" || return 0
+    [[ -r "$OWRX_SETTINGS" ]] || return 0
+    python3 "$OWRX_HELPER" claims "$OWRX_SETTINGS"
+}
+
+# Rewrite settings.json for the given "kind:id" set, then run the service
+# only if anything is assigned. OpenWebRX+ rewrites settings.json itself,
+# so it must be stopped while the file is changed.
+_owrx_apply()
+{
+    local n
+    sdr_sudo systemctl stop "$OWRX_UNIT" || return 1
+    if [[ "${SDR_DRY_RUN:-0}" == "1" ]]; then
+        echo "  [dry-run] reconcile ${OWRX_SETTINGS}: $*"
+        n=$#
+    else
+        n="$(sudo python3 "$OWRX_HELPER" reconcile "$OWRX_SETTINGS" "$@")" || return 1
+    fi
+    if (( n > 0 )); then
+        sdr_unit_start "$OWRX_UNIT"
+    else
+        sdr_unit_stop "$OWRX_UNIT"
+    fi
+}
+
+# The devices assigned to openwebrx, as kind:id, excluding $1 (an id).
+_owrx_assigned_except()
+{
+    sdr_assignments_for openwebrx | awk -v skip="$1" '$2!=skip {print $1 ":" $2}'
+}
+
+adapter_acquire()
+{
+    local kind="$1" id="$2" others
+    if [[ "$kind" == "rx888" ]] && (( $(sdr_count_kind rx888) > 1 )); then
+        sdr_err "OpenWebRX+ can't tell RX-888s apart (the SDDC driver has no serial selection); attach only one"
+        return 1
+    fi
+    [[ -w "$OWRX_SETTINGS" || -e "$OWRX_SETTINGS" ]] || { sdr_err "${OWRX_SETTINGS} not found -- is OpenWebRX+ installed?"; return 1; }
+    mapfile -t others < <(_owrx_assigned_except "$id")
+    _owrx_apply "${others[@]}" "${kind}:${id}"
+}
+
+adapter_release()
+{
+    local kind="$1" id="$2" others
+    mapfile -t others < <(_owrx_assigned_except "$id")
+    _owrx_apply "${others[@]}"
+}

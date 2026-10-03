@@ -1,0 +1,40 @@
+# shellcheck shell=bash
+###
+### SIGedge adapter: soapysdrsrv (SoapySDRServer, config/soapysdrsrv.service)
+###
+### Whole-host: SoapySDRServer has no server-side device filter -- it
+### serves every SoapySDR-visible SDR on the host to remote clients, so
+### while it runs any of them may be opened. scripts/sdr-assign
+### refuses to mix it with other device owners unless --force is given.
+### The unit runs while at least one device is assigned to it.
+###
+
+SOAPYSDRSRV_UNIT="soapysdrsrv.service"
+
+adapter_kinds()      { echo "rx888 hackrf rtlsdr"; }
+adapter_whole_host() { return 0; }
+adapter_installed()  { sdr_unit_exists "$SOAPYSDRSRV_UNIT"; }
+adapter_units()      { echo "$SOAPYSDRSRV_UNIT"; }
+
+adapter_claims()
+{
+    local k
+    sdr_unit_enabled "$SOAPYSDRSRV_UNIT" || sdr_unit_active "$SOAPYSDRSRV_UNIT" || return 0
+    for k in $(adapter_kinds); do echo "$k * -"; done
+}
+
+adapter_acquire()
+{
+    sdr_unit_active "$SOAPYSDRSRV_UNIT" && sdr_unit_enabled "$SOAPYSDRSRV_UNIT" && return 0
+    sdr_unit_start "$SOAPYSDRSRV_UNIT"
+}
+
+adapter_release()
+{
+    local id="$2"
+    # Keep running for any other device still assigned here.
+    if sdr_assignments_for soapysdrsrv | awk -v id="$id" '$2!=id {f=1} END {exit !f}'; then
+        return 0
+    fi
+    sdr_unit_stop "$SOAPYSDRSRV_UNIT"
+}

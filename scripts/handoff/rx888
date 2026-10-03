@@ -1,0 +1,105 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### scripts/handoff/rx888 <new-service> <usb-port>
+###
+###
+### 20261002-0000
+###
+### Run by scripts/sdr-assign between releasing an RX-888 from one service
+### and handing it to the next. The FX3 keeps whatever firmware its last
+### owner loaded until it loses power -- an OS reboot doesn't clear it --
+### and each driver stack expects its own firmware, which is what caused
+### "[SDDC] ERROR - usb_device: libusb Pipe error" crashes after moving the
+### device from radiod to OpenWebRX+. Two steps:
+###
+### 1. Firmware-loader policy. ka9q-radio-rx888 ships 70-rx888-boot.rules,
+###    which starts rx888_boot.service -- loading ka9q's firmware -- every
+###    time an RX-888 appears in bootloader mode. That's right only when
+###    radiod owns the device, so rx888_boot.service is unmasked for radiod
+###    and masked for every other owner (and for "none").
+###
+### 2. Reset to bootloader. RESETFX3 (vendor request 0xB1, `fx3_cmd
+###    reset`) reboots the FX3 to its bootloader (04b4:00f3), falling back
+###    to a host-side USB reset (`fx3_cmd usbreset`), which on this
+###    firmware also returns it to the bootloader. The next owner then
+###    loads its own firmware: radiod through rx888_boot, OpenWebRX+
+###    through the SDDC driver when it opens the device.
+###
+### fx3_cmd comes from rx888-firmware's tests/ (installed to
+### /usr/local/bin by devices/pkg_rx888). It talks to the first RX-888 it
+### finds, so this hook requires exactly one attached RX-888.
+###
+### If the device stays in firmware mode, unplug it for ~15 s: only a
+### real power cycle is guaranteed to clear the FX3.
+###
+
+HANDOFF_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
+# shellcheck source=../lib/sdr_common.sh
+source "${HANDOFF_HOME}/scripts/lib/sdr_common.sh"
+
+to="${1:?usage: handoff/rx888 <new-service> <usb-port>}"
+port="${2:?usage: handoff/rx888 <new-service> <usb-port>}"
+BOOT_UNIT="rx888_boot.service"
+
+pid_of_port() { cat "${SDR_SYSFS_USB}/${port}/idProduct" 2>/dev/null; }
+
+wait_for_pid()
+{
+    local want="$1" i
+    for (( i = 0; i < 15; i++ )); do
+        [[ "$(pid_of_port)" == "$want" ]] && return 0
+        sleep 1
+    done
+    return 1
+}
+
+# 1. Firmware-loader policy
+if systemctl list-unit-files "$BOOT_UNIT" --no-legend 2>/dev/null | grep -q .; then
+    if [[ "$to" == "radiod" ]]; then
+        echo "  rx888: unmasking ${BOOT_UNIT} (radiod uses ka9q's firmware)"
+        sdr_sudo systemctl unmask "$BOOT_UNIT" || exit 1
+    else
+        echo "  rx888: masking ${BOOT_UNIT} (${to} loads its own firmware)"
+        sdr_sudo systemctl mask "$BOOT_UNIT" || exit 1
+    fi
+fi
+
+# 2. Reset to bootloader
+if [[ "$(pid_of_port)" != "00f1" ]]; then
+    echo "  rx888: already in bootloader mode"
+    exit 0
+fi
+
+if (( $(sdr_count_kind rx888) > 1 )); then
+    sdr_err "more than one RX-888 attached; fx3_cmd can't target port ${port}. Unplug the others, or power-cycle this one by hand."
+    exit 1
+fi
+
+FX3_CMD="$(command -v fx3_cmd || true)"
+[[ -z "$FX3_CMD" && -x "${HANDOFF_HOME}/source/rx888-firmware/tests/fx3_cmd" ]] && \
+    FX3_CMD="${HANDOFF_HOME}/source/rx888-firmware/tests/fx3_cmd"
+if [[ -z "$FX3_CMD" ]]; then
+    sdr_err "fx3_cmd not found (SIGedge device install rx888 installs it). Unplug the RX-888 for ~15 s instead."
+    exit 1
+fi
+
+echo "  rx888: resetting FX3 to bootloader (RESETFX3)"
+sdr_sudo "$FX3_CMD" reset
+[[ "${SDR_DRY_RUN:-0}" == "1" ]] && exit 0
+if wait_for_pid 00f3; then
+    echo "  rx888: in bootloader mode (04b4:00f3)"
+    exit 0
+fi
+
+echo "  rx888: RESETFX3 didn't take; trying a host-side USB reset"
+sdr_sudo "$FX3_CMD" usbreset
+if wait_for_pid 00f3; then
+    echo "  rx888: in bootloader mode (04b4:00f3)"
+    exit 0
+fi
+
+sdr_err "the RX-888 on port ${port} is still running firmware; unplug it for ~15 s, plug it back in, and rerun"
+exit 1

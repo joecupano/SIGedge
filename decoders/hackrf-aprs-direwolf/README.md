@@ -21,11 +21,12 @@ pattern its own man page documents for `rtl_fm | direwolf`.
 ## Prerequisites
 
 1. **`radiod@hackrf-aprs` must actually be running.** This bridge only
-   has something to decode once the mission itself is enabled and started
-   -- see [KA9Q-DEPLOYMENT.md](../../KA9Q-DEPLOYMENT.md) §5. Check with:
+   has something to decode once the HackRF is assigned to the mission --
+   see [KA9Q-DEPLOYMENT.md](../../KA9Q-DEPLOYMENT.md) §5:
 
    ```bash
-   systemctl is-active radiod@hackrf-aprs
+   SIGedge assign hackrf radiod:hackrf-aprs
+   SIGedge inventory                         # HackRF: assigned to radiod hackrf-aprs
    ```
 
 2. **`direwolf` must actually run on this host.** The prebuilt

@@ -1,0 +1,108 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### sdr-access
+###
+###
+### 20261002-0000
+###
+### One access model for SDR hardware: every supported device node is
+### root:sdr 0660 (config/99-sigedge-sdr.rules), and every account that
+### drives hardware is in the "sdr" group. Replaces the mix of plugdev
+### 0666 (99-rx888.rules, 71-rx888.rules) and radio 0660
+### (70-rx888-boot.rules) that left service accounts unable to open a
+### device depending on which rule happened to win.
+###
+### Usage:
+###   scripts/sdr-access install   create the group, install the udev rule, sync
+###   scripts/sdr-access sync      add existing service accounts (and the
+###                                invoking user) to the sdr group
+###   scripts/sdr-access check     report rule, group members and the
+###                                ownership of each attached SDR node
+###
+### Group membership takes effect for a service on its next restart, and
+### for a login user on their next login.
+###
+
+SDR_ACCESS_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# shellcheck source=lib/sdr_common.sh
+source "${SDR_ACCESS_HOME}/scripts/lib/sdr_common.sh"
+
+SDR_GROUP="sdr"
+SDR_RULE_SRC="${SDR_ACCESS_HOME}/config/99-sigedge-sdr.rules"
+SDR_RULE_DST="/etc/udev/rules.d/99-sigedge-sdr.rules"
+
+# Service accounts that open SDR hardware, when they exist on this host:
+#   openwebrx  OpenWebRX+ (packages/pkg_openwebrxplus)
+#   radio      ka9q-radio's radiod@ and rx888_boot units
+SDR_SERVICE_ACCOUNTS=(openwebrx radio)
+
+_sdr_access_main()
+{
+    local action="${1:-}" user members
+
+    case "$action" in
+        install )
+            sdr_sudo groupadd --system -f "$SDR_GROUP" || return 1
+            sdr_sudo install -m 0644 "$SDR_RULE_SRC" "$SDR_RULE_DST" || return 1
+            sdr_sudo udevadm control --reload-rules || return 1
+            sdr_sudo udevadm trigger --subsystem-match=usb --action=change || return 1
+            _sdr_access_main sync
+            ;;
+
+        sync )
+            getent group "$SDR_GROUP" >/dev/null || sdr_sudo groupadd --system -f "$SDR_GROUP" || return 1
+            for user in "${SUDO_USER:-${USER:-}}" "${SDR_SERVICE_ACCOUNTS[@]}"; do
+                [[ -n "$user" && "$user" != "root" ]] || continue
+                getent passwd "$user" >/dev/null || continue
+                if id -nG "$user" | tr ' ' '\n' | grep -qx "$SDR_GROUP"; then
+                    continue
+                fi
+                echo "  adding ${user} to group ${SDR_GROUP}"
+                sdr_sudo usermod -aG "$SDR_GROUP" "$user" || return 1
+            done
+            ;;
+
+        check )
+            if [[ -f "$SDR_RULE_DST" ]]; then
+                if cmp -s "$SDR_RULE_SRC" "$SDR_RULE_DST"; then
+                    echo "rule:    ${SDR_RULE_DST} (current)"
+                else
+                    echo "rule:    ${SDR_RULE_DST} (differs from config/ -- run: scripts/sdr-access install)"
+                fi
+            else
+                echo "rule:    not installed (run: scripts/sdr-access install)"
+            fi
+            members="$(getent group "$SDR_GROUP" | cut -d: -f4)"
+            if getent group "$SDR_GROUP" >/dev/null; then
+                echo "group:   ${SDR_GROUP} members: ${members:-(none)}"
+            else
+                echo "group:   ${SDR_GROUP} does not exist"
+            fi
+            for user in "${SDR_SERVICE_ACCOUNTS[@]}"; do
+                getent passwd "$user" >/dev/null || continue
+                [[ ",${members}," == *",${user},"* ]] || echo "         ${user} exists but is not in ${SDR_GROUP} (run: scripts/sdr-access sync)"
+            done
+            local kind node label
+            while IFS='|' read -r kind _ _ _ _ node _ _ label; do
+                [[ -n "$kind" ]] || continue
+                printf 'device:  %-32s %s\n' "$label" "$(stat -c '%U:%G %a' "$node" 2>/dev/null)"
+            done < <(sdr_scan)
+            ;;
+
+        * )
+            echo "Usage: scripts/sdr-access {install|sync|check}"
+            return 1
+            ;;
+    esac
+}
+
+if _sdr_access_main "$@"; then _sdr_access_rc=0; else _sdr_access_rc=$?; fi
+unset -f _sdr_access_main
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return "$_sdr_access_rc"
+else
+    exit "$_sdr_access_rc"
+fi

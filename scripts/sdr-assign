@@ -1,0 +1,285 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### sdr-assign
+###
+###
+### 20261002-0000
+###
+### Assign one SDR to one service. The device, not the service, is the
+### unit of assignment: each attached SDR has at most one owning service,
+### recorded in /etc/sigedge/assignments.
+###
+### Usage:
+###   scripts/sdr-assign list
+###   scripts/sdr-assign adopt
+###   scripts/sdr-assign [-y] [-n] [--force] <device> <service>[:instance]
+###   scripts/sdr-assign [-y] [-n] [--force] <device> none
+###
+###   (also reachable as: SIGedge assign ...)
+###
+###   <device>   serial, "port:<usb-port>" (RX-888), or a kind -- rx888,
+###              hackrf, rtlsdr -- when only one of that kind is attached.
+###              scripts/device-inventory.sh shows each device's id.
+###   <service>  radiod[:<mission>]  ka9q-radio mission (alias: ka9q-radio)
+###              openwebrx           OpenWebRX+
+###              rtltcp              rtl_tcp server (RTL-SDR only; alias rtltcpsrv)
+###              sdrangelsrv         SDRangel server   (whole-host)
+###              soapysdrsrv         SoapySDR server   (whole-host)
+###              none                release the device; no owner
+###
+###   list       show assignments next to what's attached
+###   adopt      record what services are already using, for a host that
+###              predates the assignment record (run automatically the
+###              first time an assignment is made)
+###   -y         don't ask for confirmation
+###   -n         dry run: print every change instead of making it
+###   --force    proceed past the whole-host and "device still held" checks
+###
+### Each move: release the current owner (its adapter in
+### scripts/adapters/) -> verify nothing still holds the USB device (fuser)
+### -> run the device type's handoff hook (scripts/handoff/<kind>) ->
+### configure and start the new owner -> record the assignment.
+###
+
+SDR_ASSIGN_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# shellcheck source=lib/sdr_common.sh
+source "${SDR_ASSIGN_HOME}/scripts/lib/sdr_common.sh"
+
+usage()
+{
+    sed -n '/^### Usage:/,/^###   --force/p' "${BASH_SOURCE[0]}" | sed 's/^### \{0,1\}//'
+}
+
+ASSUME_YES=0
+FORCE=0
+ARGS=()
+while (( $# )); do
+    case "$1" in
+        -y|--yes )     ASSUME_YES=1 ;;
+        -n|--dry-run ) export SDR_DRY_RUN=1 ;;
+        --force )      FORCE=1 ;;
+        -h|--help )    usage; exit 0 ;;
+        * )            ARGS+=("$1") ;;
+    esac
+    shift
+done
+
+confirm()
+{
+    [[ "$ASSUME_YES" == "1" || "${SDR_DRY_RUN:-0}" == "1" ]] && return 0
+    local reply
+    read -r -p "$1 [y/N] " reply
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+# Does a claim "kind id" cover this device?
+claim_covers()
+{
+    local ckind="$1" cid="$2" kind="$3" id="$4" serial="$5"
+    [[ "$ckind" == "$kind" ]] || return 1
+    [[ "$cid" == "*" || "$cid" == "$id" || ( -n "$serial" && "$cid" == "$serial" ) ]]
+}
+
+# Services (other than $except) whose own config claims this device:
+# lines "service instance".
+other_claimants()
+{
+    local kind="$1" id="$2" serial="$3" except="$4" svc ck cid ci
+    for svc in "${SDR_SERVICES[@]}"; do
+        [[ "$svc" == "$except" ]] && continue
+        sdr_adapter "$svc" adapter_installed 2>/dev/null || continue
+        while read -r ck cid ci; do
+            [[ -n "$ck" ]] || continue
+            claim_covers "$ck" "$cid" "$kind" "$id" "$serial" && echo "$svc ${ci:--}"
+        done < <(sdr_adapter "$svc" adapter_claims 2>/dev/null)
+    done | sort -u
+}
+
+do_list()
+{
+    local kind vidpid port node serial id label a
+    printf '%-32s %-36s %s\n' "DEVICE" "ID" "ASSIGNED TO"
+    while IFS='|' read -r kind vidpid port _ _ node serial id label; do
+        [[ -n "$kind" ]] || continue
+        a="$(sdr_assignment_get "$id")" || a="(unassigned)"
+        printf '%-32s %-36s %s\n' "$label" "$id" "${a% -}"
+    done < <(sdr_scan)
+    if [[ -r "$SDR_ASSIGNMENTS" ]]; then
+        local k i s n
+        while read -r k i s n; do
+            sdr_scan | awk -F'|' -v id="$i" '$8==id {f=1} END {exit !f}' && continue
+            printf '%-32s %-36s %s   (not attached)\n' "$k" "$i" "$s${n:+ $n}"
+        done < <(sdr_assignment_list)
+    else
+        echo
+        echo "No assignment record yet (${SDR_ASSIGNMENTS}); 'adopt' or the first assignment creates it."
+    fi
+}
+
+# Build the record from live claims. A device claimed by exactly one
+# service is recorded; contested or unclaimed devices are left unassigned.
+do_adopt()
+{
+    local kind vidpid port node serial id label claimants n
+    local lines=()
+    while IFS='|' read -r kind vidpid port _ _ node serial id label; do
+        [[ -n "$kind" ]] || continue
+        sdr_assignment_get "$id" >/dev/null && continue
+        mapfile -t claimants < <(other_claimants "$kind" "$id" "$serial" "")
+        n=${#claimants[@]}
+        if (( n == 1 )); then
+            echo "  adopt: ${label} (${id}) -> ${claimants[0]% -}"
+            lines+=("${kind} ${id} ${claimants[0]}")
+        elif (( n > 1 )); then
+            echo "  adopt: ${label} (${id}) is claimed by ${n} services (${claimants[*]}); left unassigned -- assign it explicitly"
+        else
+            echo "  adopt: ${label} (${id}) is not claimed by any running service"
+        fi
+    done < <(sdr_scan)
+    {
+        echo "# SIGedge device assignments -- managed by scripts/sdr-assign"
+        echo "# kind  id  service  instance"
+        sdr_assignment_list
+        printf '%s\n' "${lines[@]}"
+    } | awk 'NF && !seen[$0]++' | sdr_sudo_write "$SDR_ASSIGNMENTS"
+}
+
+do_assign()
+{
+    local spec="$1" target="$2" svc inst line
+    local kind vidpid port node serial id label
+    local cur cur_svc cur_inst holders rc s i
+
+    svc="$(sdr_service_alias "${target%%:*}")"
+    inst="-"
+    [[ "$target" == *:* ]] && inst="${target#*:}"
+
+    line="$(sdr_resolve "$spec")" || return 1
+    IFS='|' read -r kind vidpid port _ _ node serial id label <<<"$line"
+    if [[ -z "$id" ]]; then
+        sdr_err "${label} reports no serial number, so it can't be told apart from others of its kind. Set one (RTL-SDR: SIGedge device install rtlsdr, or rtl_eeprom -s)."
+        return 1
+    fi
+
+    if [[ "$svc" != "none" ]]; then
+        if ! printf '%s\n' "${SDR_SERVICES[@]}" | grep -qx "$svc"; then
+            sdr_err "unknown service '${svc}' (one of: ${SDR_SERVICES[*]} none)"
+            return 1
+        fi
+        if ! sdr_adapter "$svc" adapter_kinds | tr ' ' '\n' | grep -qx "$kind"; then
+            sdr_err "${svc} can't drive a ${kind}"
+            return 1
+        fi
+        sdr_adapter "$svc" adapter_installed || { sdr_err "${svc} is not installed on this host"; return 1; }
+    fi
+
+    if [[ -f /etc/radio/enable-udev-autostart ]]; then
+        echo "WARNING: /etc/radio/enable-udev-autostart exists: ka9q-radio will start its own"
+        echo "         ka9q-radio@ instance whenever an SDR is plugged in, outside SIGedge's"
+        echo "         assignments. Remove it unless you rely on that."
+    fi
+
+    [[ -f "$SDR_ASSIGNMENTS" ]] || { echo "No assignment record yet -- adopting current claims first:"; do_adopt || return 1; }
+
+    cur="$(sdr_assignment_get "$id")" || cur="none -"
+    read -r cur_svc cur_inst <<<"$cur"
+
+    # Whole-host services can open any device: don't mix them with other owners.
+    if (( ! FORCE )); then
+        for s in "${SDR_SERVICES[@]}"; do
+            sdr_adapter "$s" adapter_whole_host 2>/dev/null || continue
+            sdr_adapter "$s" adapter_installed 2>/dev/null || continue
+            [[ "$s" != "$svc" && "$svc" != "none" ]] || continue
+            # Moving that service's only device away stops it: allowed.
+            if [[ "$cur_svc" == "$s" ]] && \
+               ! sdr_assignments_for "$s" | awk -v id="$id" '$2!=id {f=1} END {exit !f}'; then
+                continue
+            fi
+            if sdr_adapter "$s" adapter_units | while read -r u; do sdr_unit_active "$u" && exit 0; done; then
+                sdr_err "${s} is running and can open any SDR on this host; release its devices first, or pass --force"
+                return 1
+            fi
+        done
+        if [[ "$svc" != "none" ]] && sdr_adapter "$svc" adapter_whole_host 2>/dev/null; then
+            if sdr_assignment_list | awk -v id="$id" -v s="$svc" '$2!=id && $3!=s {f=1} END {exit !f}'; then
+                sdr_err "${svc} can open any SDR on this host, but other devices are assigned to other services; pass --force to accept that"
+                return 1
+            fi
+        fi
+    fi
+
+    echo "Device:  ${label}  id=${id}  (${node})"
+    echo "Now:     ${cur_svc}${cur_inst:+ ${cur_inst}}" | sed 's/ -$//'
+    echo "New:     ${svc} ${inst}" | sed 's/ -$//'
+    if [[ "$cur_svc" == "$svc" && "$cur_inst" == "$inst" ]]; then
+        echo "Already assigned."
+        return 0
+    fi
+    confirm "Proceed?" || { echo "Cancelled."; return 1; }
+
+    [[ "${SDR_DRY_RUN:-0}" == "1" ]] || sudo -v || { sdr_err "sudo is required"; return 1; }
+
+    # 1. Release the recorded owner, plus any other service whose config
+    #    still claims this device (e.g. an unpinned mission).
+    if [[ "$cur_svc" != "none" ]]; then
+        sdr_msg "Releasing from ${cur_svc}"
+        sdr_adapter "$cur_svc" adapter_release "$kind" "$id" "$cur_inst" || return 1
+    fi
+    while read -r s i; do
+        [[ -n "$s" && "$s" != "$cur_svc" && "$s" != "$svc" ]] || continue
+        if sdr_adapter "$s" adapter_whole_host 2>/dev/null; then
+            continue    # whole-host services were handled above
+        fi
+        sdr_msg "Releasing from ${s} (its config also claims this device)"
+        sdr_adapter "$s" adapter_release "$kind" "$id" "$i" || return 1
+    done < <(other_claimants "$kind" "$id" "$serial" "$svc")
+
+    # 2. Ground truth: nothing may still hold the device.
+    if [[ "${SDR_DRY_RUN:-0}" != "1" ]]; then
+        sdr_wait_free "$node" 15; rc=$?
+        if (( rc == 1 )); then
+            holders="$(sdr_holders "$node" | awk -F'|' '{printf "%s (pid %s, %s) ", $3, $1, $2}')"
+            if (( FORCE )); then
+                echo "WARNING: still held by ${holders}-- continuing (--force)"
+            else
+                sdr_err "${node} is still held by ${holders}; stop that first, or pass --force"
+                return 1
+            fi
+        elif (( rc == 2 )); then
+            echo "WARNING: can't check who holds ${node} without sudo"
+        fi
+    fi
+
+    # 3. Device-type handoff (e.g. RX-888 firmware reset).
+    sdr_handoff "$kind" "$svc" "$port" || return 1
+
+    # 4. Hand to the new owner.
+    if [[ "$svc" != "none" ]]; then
+        sdr_msg "Assigning to ${svc}${inst:+ ${inst}}" | sed 's/ -$//'
+        sdr_adapter "$svc" adapter_acquire "$kind" "$id" "$inst" || {
+            sdr_err "${svc} failed to take the device; the record still shows it unassigned"
+            sdr_assignment_set "$kind" "$id" none
+            return 1
+        }
+    fi
+
+    # 5. Record it. A radiod mission chosen automatically is recorded by name.
+    if [[ "$svc" == "radiod" && "$inst" == "-" ]]; then
+        inst="$(sdr_adapter radiod adapter_claims | awk -v k="$kind" '$1==k {print $3; exit}')"
+    fi
+    sdr_assignment_set "$kind" "$id" "$svc" "${inst:--}" || return 1
+    sdr_msg "Done: ${kind} ${id} -> ${svc}${inst:+ ${inst}}" | sed 's/ -$//'
+}
+
+case "${ARGS[0]:-}" in
+    list )  do_list ;;
+    adopt ) [[ "${SDR_DRY_RUN:-0}" == "1" ]] || sudo -v || exit 1; do_adopt ;;
+    "" )    usage; exit 1 ;;
+    * )
+        (( ${#ARGS[@]} == 2 )) || { usage; exit 1; }
+        do_assign "${ARGS[0]}" "${ARGS[1]}"
+        ;;
+esac

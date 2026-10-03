@@ -1,0 +1,108 @@
+# shellcheck shell=bash
+###
+### SIGedge adapter: radiod (ka9q-radio missions, radiod@<mission>.service)
+###
+### One mission per device. The instance is the mission name, e.g.
+### "radiod:hackrf-aprs"; with no instance, the only mission whose
+### `hardware` matches the device kind is used. Acquiring pins the
+### mission's device section to the device's serial (`serial = ...`) and
+### starts the mission; releasing stops and disables it.
+###
+### The RX-888's serial depends on which firmware is loaded, so an RX-888
+### mission is left unpinned and only one RX-888 may be attached.
+###
+
+RADIOD_CONFIG_DIR="${KA9Q_CONFIG_DIR:-/etc/radio}"
+
+adapter_kinds()      { echo "rx888 hackrf rtlsdr"; }
+adapter_whole_host() { return 1; }
+adapter_installed()  { sdr_unit_exists "radiod@.service"; }
+
+_radiod_missions()
+{
+    local f m
+    for f in "$RADIOD_CONFIG_DIR"/radiod@*.conf; do
+        [[ -e "$f" ]] || continue
+        m="$(basename "$f")"; m="${m#radiod@}"; echo "${m%.conf}"
+    done
+}
+
+adapter_units() { _radiod_missions | sed 's/.*/radiod@&.service/'; }
+
+# [global] hardware = <section>; that section's `serial`.
+_radiod_hw()     { awk -F'=' '/^\[/{s=$0} s=="[global]" && $1~/^[[:space:]]*hardware[[:space:]]*$/ {gsub(/[[:space:]"]/,"",$2); print $2; exit}' "$1"; }
+_radiod_serial() { awk -F'=' -v sec="[$2]" '/^\[/{s=$0} s==sec && $1~/^[[:space:]]*serial[[:space:]]*$/ {gsub(/[[:space:]"]/,"",$2); print $2; exit}' "$1"; }
+
+adapter_claims()
+{
+    local m conf hw serial unit
+    while IFS= read -r m; do
+        conf="${RADIOD_CONFIG_DIR}/radiod@${m}.conf"
+        unit="radiod@${m}.service"
+        sdr_unit_enabled "$unit" || sdr_unit_active "$unit" || continue
+        hw="$(_radiod_hw "$conf")"
+        serial="$(_radiod_serial "$conf" "$hw")"
+        echo "${hw} ${serial:-*} ${m}"
+    done < <(_radiod_missions)
+}
+
+_radiod_pick_mission()
+{
+    local kind="$1" inst="$2" m found=()
+    if [[ -n "$inst" && "$inst" != "-" ]]; then
+        [[ -f "${RADIOD_CONFIG_DIR}/radiod@${inst}.conf" ]] || {
+            sdr_err "no ${RADIOD_CONFIG_DIR}/radiod@${inst}.conf (scripts/cfg_ka9q-radio or scripts/ka9q-radio-builder)"
+            return 1
+        }
+        echo "$inst"; return 0
+    fi
+    while IFS= read -r m; do
+        [[ "$(_radiod_hw "${RADIOD_CONFIG_DIR}/radiod@${m}.conf")" == "$kind" ]] && found+=("$m")
+    done < <(_radiod_missions)
+    if (( ${#found[@]} != 1 )); then
+        sdr_err "${#found[@]} radiod missions use ${kind} (${found[*]:-none}); name one: radiod:<mission>"
+        return 1
+    fi
+    echo "${found[0]}"
+}
+
+# Set (or with an empty serial, remove) `serial =` in the device section.
+_radiod_set_serial()
+{
+    local conf="$1" sec="$2" serial="$3"
+    awk -v sec="[$sec]" -v serial="$serial" '
+        /^\[/ { if (insec && !done && serial != "") { print "serial = " serial; done=1 } insec = ($0 == sec) }
+        insec && /^[[:space:]]*serial[[:space:]]*=/ { if (serial != "" && !done) { print "serial = " serial; done=1 } next }
+        { print }
+        END { if (insec && !done && serial != "") print "serial = " serial }
+    ' "$conf" | sdr_sudo_write "$conf"
+}
+
+adapter_acquire()
+{
+    local kind="$1" id="$2" inst="$3" mission conf hw
+    mission="$(_radiod_pick_mission "$kind" "$inst")" || return 1
+    conf="${RADIOD_CONFIG_DIR}/radiod@${mission}.conf"
+    hw="$(_radiod_hw "$conf")"
+    if [[ "$hw" != "$kind" ]]; then
+        sdr_err "mission ${mission} is for '${hw}', not ${kind}"
+        return 1
+    fi
+    if [[ "$kind" == "rx888" ]]; then
+        if (( $(sdr_count_kind rx888) > 1 )); then
+            sdr_err "radiod can't be pinned to one of several RX-888s here (its serial depends on firmware); attach only one"
+            return 1
+        fi
+        _radiod_set_serial "$conf" "$hw" "" || return 1
+    else
+        _radiod_set_serial "$conf" "$hw" "$id" || return 1
+    fi
+    sdr_unit_start "radiod@${mission}.service"
+}
+
+adapter_release()
+{
+    local kind="$1" id="$2" inst="$3" mission
+    mission="$(_radiod_pick_mission "$kind" "$inst")" || return 1
+    sdr_unit_stop "radiod@${mission}.service"
+}

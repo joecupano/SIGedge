@@ -27,7 +27,7 @@ SDR hardware -> ka9q-radio radiod -> RTP/IP multicast -> any number of network c
 SDR hardware -> direct-access app (SoapySDR / SoapyRemote) -> one exclusive owner
 ```
 
-Both models install side by side; you choose, per device, which one a given radio is doing at any moment. **A single physical SDR can only be in one of these two states at a time** — see "Device ownership across services" below.
+Both models install side by side; you choose, per device, which one a given radio is doing at any moment, with `SIGedge assign <device> <service>`. **A single physical SDR has exactly one owning service at a time** — see "Device ownership across services" below.
 
 ## Services
 
@@ -67,9 +67,9 @@ Each of the following runs on top of one of the two models above. This section c
 
 **Delivers:** a receiver reachable from any browser, no client app to install — the easiest way to give someone else on the network, or yourself remotely, a listen without a dedicated SDR app.
 
-**How it fits together:** it's a *direct-access* consumer of the hardware, the same model as SDRangel/GQRX above, so it's mutually exclusive with a `radiod` mission on the same device. The two are alternative deployments for the same radio, switched between with `scripts/service_toggle` rather than run at the same time.
+**How it fits together:** it's a *direct-access* consumer of the hardware, the same model as SDRangel/GQRX above, so it's mutually exclusive with a `radiod` mission on the *same* device. It can run alongside `radiod` on the same host as long as each owns different devices — e.g. the RX-888 in OpenWebRX+ while the HackRF feeds a `radiod` APRS mission. Which devices it uses follows the assignments: `SIGedge assign <device> openwebrx` enables that device in OpenWebRX+ and disables it everywhere else.
 
-**Setup:** `SIGedge install openwebrxplus` installs OpenWebRX+ from the luarvique PPA (Debian 11–13 including Raspberry Pi OS, Ubuntu 22.04/24.04); add `SIGedge device install rx888mk2-soapy` for the RX-888. Details and RX-888 gain settings are in KA9Q-DEPLOYMENT.md's ["RX-888 in OpenWebRX+"](KA9Q-DEPLOYMENT.md#rx-888-in-openwebrx--packagespkg_openwebrxplus) section; switch a device between OpenWebRX+ and `radiod` with `scripts/service_toggle`.
+**Setup:** `SIGedge install openwebrxplus` installs OpenWebRX+ from the luarvique PPA (Debian 11–13 including Raspberry Pi OS, Ubuntu 22.04/24.04); add `SIGedge device install rx888mk2-soapy` for the RX-888. Details and RX-888 gain settings are in KA9Q-DEPLOYMENT.md's ["RX-888 in OpenWebRX+"](KA9Q-DEPLOYMENT.md#rx-888-in-openwebrx--packagespkg_openwebrxplus) section; give it a device with `SIGedge assign <device> openwebrx`.
 
 ### AI and analytics bridges
 
@@ -89,11 +89,43 @@ Each of the following runs on top of one of the two models above. This section c
 
 ## Device ownership across services
 
-Every service above eventually touches physical hardware, and **an SDR must have exactly one active owner at a time.** Do not start a direct-access application (SDRangel, OpenWebRX+, GQRX, `rtl_tcp`, ...) against a device a `radiod` instance already owns, and do not start `radiod` for a device a direct-access app or SoapyRemote already has open. Two different physical SDRs on the same host can run under two different owners simultaneously — for example, HackRF under `radiod` while an RTL-SDR is handed to a direct-access app — the constraint is per device, not per host.
+Every service above eventually touches physical hardware, and **an SDR has exactly one owning service at a time.** The device, not the service, is the unit of assignment: each attached SDR is assigned to one service — a `radiod` mission, OpenWebRX+, the `rtl_tcp` server, SDRangel server, SoapySDR server — or to none, and that's recorded in `/etc/sigedge/assignments`. Two different SDRs on the same host can belong to two different services at once; the constraint is per device, not per host.
 
-When two always-on services genuinely need the same device *type* at once, the resolution is one physical unit per consumer, each pinned to its own service by USB serial number rather than left to auto-detect and risk both landing on the same dongle — RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default; RX-888/HackRF's higher cost is exactly why the discipline-only, one-unit-total model above still applies to them instead.
+### Moving a device: `SIGedge assign`
 
-`scripts/device-inventory.sh` shows what's physically attached side by side with whatever already claims it (`radiod`'s per-mission `serial =` lines and live enabled/active state, OpenWebRX's live state, RTL-TCP server's `RTLTCP_SERIAL`), cross-matched against what's actually plugged in and flagging it if `radiod` and OpenWebRX are ever both active at once — check it before enabling a new service on a device that might already be spoken for. Pass `--json` for a machine-readable version. `scripts/service_toggle` is the companion tool that actually switches a device between `radiod` and OpenWebRX.
+```bash
+SIGedge assign list                       # what's attached and who it's assigned to
+SIGedge assign rx888 openwebrx            # give the RX-888 to OpenWebRX+
+SIGedge assign hackrf radiod:hackrf-aprs  # give the HackRF to a ka9q-radio mission
+SIGedge assign 00000101 rtltcp            # a device by serial
+SIGedge assign hackrf none                # release it
+```
+
+(`SIGedge assign` runs `scripts/sdr-assign`.) A device is named by its serial, by `port:<usb-port>` for an RX-888, or by its kind (`rx888`, `hackrf`, `rtlsdr`) when only one of that kind is attached. Every move runs the same sequence:
+
+1. **Release** the current owner — stop its `radiod` mission, disable the device in OpenWebRX+'s settings, stop `rtl_tcp`, ... — plus any other service whose own config still claims the device.
+2. **Verify** nothing still holds the USB device, by checking `/dev/bus/usb/...` with `fuser` — the ground truth whichever driver a service uses.
+3. **Hand off** with the device type's hook. For the RX-888 that means resetting the FX3 to its bootloader so the next owner loads its own firmware, and allowing ka9q-radio's firmware loader only when `radiod` is the new owner (see KA9Q-DEPLOYMENT.md's RX-888 section).
+4. **Acquire**: configure the new owner for exactly this device (pin a mission or `rtl_tcp` to its serial, enable and pin it in OpenWebRX+) and start it.
+5. **Record** the assignment.
+
+Each service plugs in through a small adapter in `scripts/adapters/` that knows how to read its claims, release a device and acquire one. Two services can't select a single device: SDRangel server and SoapySDR server open any SDR they can see, so `SIGedge assign` refuses to run either alongside other owners unless you pass `--force`. Neither OpenWebRX+ nor `radiod` can tell RX-888s apart (the RX-888's serial depends on its firmware), so either one supports a single RX-888 per host. A host that predates the assignment record is adopted automatically on the first assignment: devices that exactly one running service already claims are recorded as theirs.
+
+`scripts/service_toggle {ka9q-radio|openwebrx|off}` still exists for "move everything to one side": it makes the equivalent per-device assignments.
+
+### Seeing who owns what: `SIGedge inventory`
+
+`SIGedge inventory` (`scripts/device-inventory.sh`) lists each attached SDR with its id, its assignment, and **who actually holds it right now** — process and systemd unit, from `fuser` (run it with `sudo` to see other users' processes). It warns when these disagree: a device held by something other than its assigned owner, another service's config also claiming it, ka9q-radio's RX-888 firmware loader left active for an RX-888 assigned elsewhere. `--detail` shows every claim source; `--json` is machine-readable. OpenWebRX+ opens a device only while someone is listening, so an idle OpenWebRX+ assignment shows no live holder.
+
+### Access and drivers
+
+All supported SDR device nodes are owned by one group, `sdr` (mode 0660, `config/99-sigedge-sdr.rules`), and every account that drives hardware — `openwebrx`, ka9q-radio's `radio`, the operator's login — is a member, so a device works the same for whichever service gets it. `scripts/sdr-access {install|sync|check}` manages this; `SIGedge setup` installs it. Group membership takes effect when a service restarts, or at the user's next login.
+
+`scripts/driver-check` finds driver-stack problems that break services in ways their own checks don't: the same SoapySDR driver installed twice (SIGedge's build and the distro's), binaries that can't load a library, and `/usr/local` copies shadowing packaged libraries or Python modules. `SIGedge setup` runs it at the end; run it again after installing anything by hand.
+
+### Several units of the same type
+
+When two always-on services genuinely need the same device *type* at once, the resolution is one physical unit per consumer, each assigned to its own service by serial number — RTL-SDR dongles are cheap enough that a dedicated unit per consumer is the practical default; RX-888/HackRF's higher cost is why the one-unit, one-owner model above still applies to them.
 
 RTL-SDR dongles frequently ship with no serial number in EEPROM, or with a default shared across units, which defeats serial pinning before it starts. `SIGedge device install rtlsdr` (interactive sessions only) checks every attached unit with `rtl_eeprom` and prompts to assign a unique serial to any device with none, or with one that collides with another attached unit; a non-interactive/headless run skips this with a warning, and the serial can be set later by hand with `sudo rtl_eeprom -d <index> -s <serial>`. No other supported device in this list has a genuinely user-writable EEPROM/OTP serial: HackRF's ID is a read-only factory value, and the RX-888 path (`devices/pkg_rx888`) deliberately never flashes EEPROM/SPI.
 
@@ -130,7 +162,7 @@ Installation and activation are always kept separate, for both deployment paths:
 - The standard setup installs SDR drivers, ka9q-radio support, and direct-access (SoapySDR) plumbing.
 - No radio-specific `radiod` instance is configured, enabled, or started by default.
 - Direct-access network-service plumbing (SoapyRemote) is installed, but its network service is left disabled and stopped by default.
-- The operator must explicitly choose a service path per device and enable it.
+- The operator explicitly assigns each device to a service, which configures and starts it: `SIGedge assign <device> <service>` (see [Device ownership across services](#device-ownership-across-services)).
 
 ### Package management
 
@@ -185,7 +217,7 @@ avahi-browse -rt _soapy._tcp   # confirms it's discoverable on the network
 sudo systemctl disable --now soapyremote-server.service
 ```
 
-Before enabling it, make sure none of the SDRs it would expose are already owned by a running `radiod` instance (`systemctl status radiod@*`) — SoapyRemote does not know or care that another process has a device open, and a collision there fails at the driver/USB level, not gracefully.
+Before enabling it, make sure none of the SDRs it would expose are owned by another service (`SIGedge inventory`) — SoapyRemote does not know or care that another process has a device open, and a collision there fails at the driver/USB level, not gracefully. To run SoapySDR server as a SIGedge service instead, assign devices to it: `SIGedge assign <device> soapysdrsrv`.
 
 ## Network and hardware notes
 
@@ -196,7 +228,8 @@ Before enabling it, make sure none of the SDRs it would expose are already owned
 
 ## Further reading
 
-- [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) — full ka9q-radio deployment instructions, RX-888 firmware bring-up, and current implementation limitations.
+- [KA9Q-DEPLOYMENT.md](KA9Q-DEPLOYMENT.md) — full ka9q-radio deployment instructions, RX-888 firmware bring-up and handoff, and current implementation limitations.
+- [scripts/README.md](scripts/README.md) — the setup scripts and the device-ownership tools (`sdr-assign`, `device-inventory.sh`, `sdr-access`, `driver-check`, adapters and handoff hooks).
 - [NETWORKING.md](NETWORKING.md) — how ka9q-radio's multicast addressing actually resolves (`dns = yes` vs. hashed), and this deployment's static address scheme.
 - [ai/README.md](ai/README.md) — bridges/adapters exposing `radiod` multicast channels to AI consumers (the "APIs / MCP" branch of the architecture diagram above).
 - [decoders/README.md](decoders/README.md) — bridges feeding `radiod` multicast audio into decode-side applications (the "decoders" branch of the architecture diagram above).

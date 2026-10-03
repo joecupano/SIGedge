@@ -28,6 +28,8 @@
 ### Notes:
 ###   - This script does not change shell options because it is sourced.
 ###   - Privileged operations use sudo; the calling user must have sudo privileges.
+###   - Installs fx3_cmd (rx888-firmware tests/) to /usr/local/bin for
+###     scripts/handoff/rx888.
 ###   - RX-888 FX3 firmware is staged for ka9q-radio and uploaded to volatile RAM
 ###     during validation. The script does not permanently flash EEPROM/SPI.
 ###
@@ -48,6 +50,7 @@ _sigedge_rx888_main() {
     local FW_INSTALL="${FW_INSTALL_DIR}/${FW_NAME}"
     local UDEV_SOURCE=""
     local UDEV_INSTALL="${SYSROOT}/etc/udev/rules.d/99-rx888.rules"
+    local FX3_CMD_INSTALL="${SYSROOT}/usr/local/bin/fx3_cmd"
     local USB_CONF="${SYSROOT}/etc/modprobe.d/usbcore.conf"
     local MANIFEST="${SYSROOT}/var/lib/rx888/rx888-prep.env"
     local VALIDATE="${RX888_VALIDATE:-1}"
@@ -81,6 +84,7 @@ _sigedge_rx888_main() {
 
         remove )
             sudo rm -f "${FW_INSTALL}" || return 1
+            sudo rm -f "${FX3_CMD_INSTALL}" || return 1
             sudo rm -f "${UDEV_INSTALL}" || return 1
             sudo rm -f "${MANIFEST}" || return 1
             sudo rmdir "${SYSROOT}/var/lib/rx888" 2>/dev/null || true
@@ -96,6 +100,7 @@ _sigedge_rx888_main() {
 
         purge )
             sudo rm -f "${FW_INSTALL}" || return 1
+            sudo rm -f "${FX3_CMD_INSTALL}" || return 1
             sudo rm -f "${UDEV_INSTALL}" || return 1
             sudo rm -f "${USB_CONF}" || return 1
             sudo rm -f "${MANIFEST}" || return 1
@@ -139,6 +144,9 @@ _sigedge_rx888_main() {
             [[ -f "${UDEV_SOURCE}" ]] || { echo "ERROR: RX-888 udev rules not found: ${UDEV_SOURCE}" >&2; return 1; }
 
             make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
+            # fx3_cmd: RESETFX3 / USB reset for scripts/handoff/rx888, which
+            # returns the FX3 to its bootloader when the RX-888 changes owner.
+            sudo install -D -m 0755 "${SRC_DIR}/tests/fx3_cmd" "${FX3_CMD_INSTALL}" || return 1
 
             sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
             sudo install -d -m 0755 "$(dirname "${UDEV_INSTALL}")" || return 1
@@ -216,6 +224,9 @@ _sigedge_rx888_main() {
             [[ -f "${UDEV_SOURCE}" ]] || { echo "ERROR: RX-888 udev rules not found: ${UDEV_SOURCE}" >&2; return 1; }
 
             make -C "${SRC_DIR}/tests" -j"$(nproc)" || return 1
+            # fx3_cmd: RESETFX3 / USB reset for scripts/handoff/rx888, which
+            # returns the FX3 to its bootloader when the RX-888 changes owner.
+            sudo install -D -m 0755 "${SRC_DIR}/tests/fx3_cmd" "${FX3_CMD_INSTALL}" || return 1
 
             sudo install -d -m 0755 "${FW_INSTALL_DIR}" || return 1
             sudo install -d -m 0755 "$(dirname "${UDEV_INSTALL}")" || return 1

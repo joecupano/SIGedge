@@ -38,6 +38,13 @@
 ###
 ###          shell           provide SIGedge env variables around a TARGET
 ###
+###          assign          assign an SDR to a service (scripts/sdr-assign):
+###                 list                      show assignments
+###                 <device> <service>        e.g. SIGedge assign rx888 openwebrx
+###                 <device> none             release a device
+###          inventory       attached SDRs, their owner and live holder
+###                          (scripts/device-inventory.sh [--detail|--json])
+###
 ###       TARGET
 ###
 ###          A SIGedge package
@@ -253,6 +260,12 @@ case "$1" in
     shell )
         source $2
         ;;
+    assign )
+        "$SIGEDGE_SCRIPTS/sdr-assign" "${@:2}"
+        ;;
+    inventory )
+        "$SIGEDGE_SCRIPTS/device-inventory.sh" "${@:2}"
+        ;;
 
     * )
         cat <<EOF
@@ -277,6 +290,8 @@ case "$1" in
                  build           compile and install DEVICE (option may not be available)
                  package         compile only and copy package to SIG/debs directory (option may not be available)
 
+          assign                 assign an SDR to a service: assign list | assign <device> <service|none>
+          inventory              attached SDRs, owner and live holder [--detail|--json]
           setup
                  standard        First time setup for desktop
                  server          First time setup for server

@@ -58,6 +58,11 @@ case "$1" in
         make -j4
         sudo make install
         sudo ldconfig
+        # One SoapyHackRF only: the distro's copy would register the same
+        # "hackrf" driver (see scripts/driver-check).
+        if dpkg -s soapysdr0.8-module-hackrf >/dev/null 2>&1; then
+            sudo apt-get remove -y soapysdr0.8-module-hackrf
+        fi
         cat $SIGEDGE_DEVLIST|grep "hackrf" >> $SIGEDGE_INSTALLED_DEVICES
         ;;&
 

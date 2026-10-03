@@ -126,11 +126,10 @@ done
 if [[ -n "$DIRECT_ACCESS_SELECTED" ]] && grep -qx 'ka9q-radio' "$SIGEDGE_INSTALLED_SERVICES"; then
     echo
     echo "NOTE: ka9q-radio and a direct-access service ($DIRECT_ACCESS_SELECTED) were"
-    echo "both selected. Both installed, both left disabled -- but only one may own a"
-    echo "given radio at a time. Enable a radiod mission (scripts/cfg_ka9q-radio) OR"
-    echo "the direct-access service for a device, never both; use"
-    echo "scripts/device-inventory.sh to check what's already claimed before enabling"
-    echo "either one."
+    echo "both selected. Both installed, both left disabled -- each radio gets exactly"
+    echo "one owner. Assign each device to a service with scripts/sdr-assign (it stops"
+    echo "the previous owner and hands the device over); scripts/device-inventory.sh"
+    echo "shows who owns and who is actually holding each device."
 fi
 
 echo -e "${SIGEDGE_BANNER_COLOR}"

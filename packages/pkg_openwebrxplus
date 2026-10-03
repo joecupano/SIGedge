@@ -20,7 +20,7 @@
 ###     SIGedge (install|remove|purge) openwebrxplus
 ###
 ### Like every SIGedge service, the unit is left disabled and stopped;
-### enable it with scripts/service_toggle openwebrx.
+### it starts when a device is assigned to it: scripts/sdr-assign <device> openwebrx.
 ###
 
 _sigedge_openwebrxplus_main() {
@@ -90,16 +90,11 @@ _sigedge_openwebrxplus_main() {
             # every service disabled until an operator picks a side per device.
             sudo systemctl disable --now openwebrx.service || return 1
 
-            # RX-888 device-node access for the openwebrx service account depends
-            # on which udev rule won: devices/pkg_rx888's 99-rx888.rules gives
-            # 0666 root:plugdev; where ka9q-radio's RX-888 support is installed
-            # the node can instead be 0660 root:radio, which the openwebrx
-            # account can't open without membership (LIBUSB_ERROR_ACCESS, then
-            # a soapy_connector segfault). Join whichever groups exist.
-            sudo usermod -aG plugdev openwebrx || return 1
-            if getent group radio >/dev/null; then
-                sudo usermod -aG radio openwebrx || return 1
-            fi
+            # Device access: the openwebrx service account joins the shared
+            # "sdr" group that owns every SDR node (scripts/sdr-access,
+            # config/99-sigedge-sdr.rules). Without it, the SoapySDR module
+            # gets LIBUSB_ERROR_ACCESS and soapy_connector segfaults.
+            "${SIGEDGE_SCRIPTS}/sdr-access" sync || return 1
 
             if ! grep -q '^openwebrxplus,' "${SIGEDGE_INSTALLED}"; then
                 grep '^openwebrxplus,' "${SIGEDGE_PKGLIST}" >> "${SIGEDGE_INSTALLED}"
@@ -108,7 +103,7 @@ _sigedge_openwebrxplus_main() {
             echo "OpenWebRX+ installed but not enabled. Next steps:"
             echo "  RX-888 support:  SIGedge device install rx888mk2-soapy"
             echo "  Web UI admin:    sudo openwebrx admin adduser <username>"
-            echo "  Enable:          scripts/service_toggle openwebrx"
+            echo "  Assign devices:  scripts/sdr-assign <device> openwebrx   (e.g. rx888)"
         ;;&
 
         remove|purge|install|build|package )

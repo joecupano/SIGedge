@@ -1,0 +1,53 @@
+# SIGedge SDR access -- installed by scripts/sdr-access to
+# /etc/udev/rules.d/99-sigedge-sdr.rules.
+#
+# Every supported SDR belongs to the "sdr" group, mode 0660, whichever
+# vendor or distro rules also match it (librtlsdr, libhackrf, ka9q-radio's
+# rx888 rules, devices/pkg_rx888's 99-rx888.rules, ...). ":=" makes these
+# final, and this file sorts after the 99-rx888 rules it overrides.
+# Every service account that drives hardware (openwebrx, radio, the
+# operator's login) joins "sdr"; see `scripts/sdr-access sync`.
+# TAG+="uaccess" keeps desktop-seat access for the logged-in user.
+
+ACTION=="remove", GOTO="sigedge_sdr_end"
+SUBSYSTEM!="usb", GOTO="sigedge_sdr_end"
+ENV{DEVTYPE}!="usb_device", GOTO="sigedge_sdr_end"
+
+# RTL-SDR
+ATTR{idVendor}=="0bda", ATTR{idProduct}=="2832", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="0bda", ATTR{idProduct}=="2838", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# HackRF One
+ATTR{idVendor}=="1d50", ATTR{idProduct}=="6089", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# RX-888 MkII: firmware loaded (00f1) and FX3 bootloader/DFU (00f3)
+ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f1", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="04b4", ATTR{idProduct}=="00f3", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# Airspy R2 / Mini
+ATTR{idVendor}=="1d50", ATTR{idProduct}=="60a1", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# bladeRF 1 / 2.0 micro
+ATTR{idVendor}=="2cf0", ATTR{idProduct}=="5246", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="2cf0", ATTR{idProduct}=="5250", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# LimeSDR-USB / LimeSDR Mini
+ATTR{idVendor}=="1d50", ATTR{idProduct}=="6108", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# PlutoSDR
+ATTR{idVendor}=="0456", ATTR{idProduct}=="b673", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="0456", ATTR{idProduct}=="b674", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# Ettus USRP B200 / B210 / B200mini
+ATTR{idVendor}=="2500", ATTR{idProduct}=="0020", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="2500", ATTR{idProduct}=="0021", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+ATTR{idVendor}=="2500", ATTR{idProduct}=="0022", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# RigExpert Fobos
+ATTR{idVendor}=="16d0", ATTR{idProduct}=="132e", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+# SDRplay (all models)
+ATTR{idVendor}=="1df7", GROUP:="sdr", MODE:="0660", TAG+="uaccess"
+
+LABEL="sigedge_sdr_end"

@@ -19,7 +19,11 @@ echo -e "${SIGEDGE_BANNER_COLOR} ##"
 echo -e "${SIGEDGE_BANNER_RESET}"
 
 # SoapySDR plumbing for applications that access an SDR directly.
-sudo apt-get install -y libusb-1.0-0-dev soapysdr-tools libsoapysdr-dev
+# --no-install-recommends: libsoapysdr0.8 recommends soapysdr0.8-module-all,
+# which installs the distro's own modules for HackRF, RTL-SDR, etc. next to
+# the ones SIGedge builds -- the same driver registered twice, with load
+# order deciding which one runs (scripts/driver-check reports this).
+sudo apt-get install -y --no-install-recommends libusb-1.0-0-dev soapysdr-tools libsoapysdr-dev
 
 # SoapySDDC for the optional direct-access RX-888 path -- actually optional
 # now: gated on the rx888 device checkbox instead of running unconditionally

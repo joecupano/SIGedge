@@ -7,7 +7,8 @@ When **./SIGedge setup** is run it calls the following scripts in order:
 starts a menu to select devices and services
 
 - **setup_core**
-installs baseline software and libraries used across packages.
+installs baseline software and libraries used across packages, and the
+shared SDR access model (`sdr-access install`).
 
 - **setup_devices**
 installs drivers and supporting software for devices. Each device has
@@ -19,8 +20,9 @@ codec2, multimon-ng, direwolf, etc.) shared across packages, independent
 of which SDR devices or services are selected.
 
 - **setup_services**
-installs and setups services that use the devices. The services are setup
-but further configuration is necessary for each service before enabling them.
+installs and setups services that use the devices. Every service is left
+disabled; a service starts when a device is assigned to it with
+`SIGedge assign`. `setup_start` finishes by running `driver-check`.
 
 ## Services ##
 - **cfg_ka9q-radio**
@@ -54,37 +56,89 @@ keep it isolated (plain `python3 -m venv` fails on Debian/Ubuntu until
 directly: `scripts/ka9q-radio-builder`; not part of the `SIGedge`
 parent-script dispatch.
 
-- **service_toggle**
-Safely switches between ka9q-radio and OpenWebRX, which are alternative
-deployments for the same SDR hardware and must never both be active at
-once. Always stops+disables the side being switched away from before
-enabling+starting the other, verifying each step against `systemctl`
-rather than assuming prior state. Switching only -- for current state,
-use `device-inventory.sh` below. Run directly, e.g.
-`scripts/service_toggle ka9q-radio` or `scripts/service_toggle openwebrx`;
-not part of the `SIGedge` parent-script dispatch.
+## Device ownership
 
-- **device-inventory.sh**
-Read-only tool, and the one place to see the full picture: what's
-physically attached, what already claims it, and whether that claim is
-actually live right now. Lists attached SDR/RF USB devices (RTL-SDR,
-HackRF, RX-888) with their real USB serial numbers, side by
-side with whatever SIGedge configs currently claim each device --
-`radiod`'s per-mission `serial =` line (plus each mission's live
-systemd enabled/active state), OpenWebRX's live enabled/active state,
-and RTL-TCP server's `RTLTCP_SERIAL` override
-(`/etc/default/rtltcp`, see `config/rtltcp.service`) -- cross-matched
-against what's actually plugged in, and flags it if a radiod mission and
-OpenWebRX are ever both active at once (the one conflict that can
-actually be confirmed). SDRangel server and SoapySDR Server are reported
-as active-or-not only -- neither exposes a per-device claim SIGedge can
-read. Answers "what's attached, what claims it, and is that claim live"
-without switching anything itself -- use `service_toggle` above to
-actually move a device between radiod and OpenWebRX; see
-[README.md](../README.md)'s device-ownership section for the actual
-one-owner-per-device policy. No arguments, no sudo required:
-`./scripts/device-inventory.sh` (add `--json` for a machine-readable
-version of the same data).
+Each attached SDR is assigned to exactly one service, recorded in
+`/etc/sigedge/assignments`. See [README.md](../README.md#device-ownership-across-services)
+for the model; these are the pieces.
+
+- **sdr-assign** (`SIGedge assign`)
+Assigns one device to one service: `sdr-assign <device> <service>[:instance]`,
+`sdr-assign <device> none`, `sdr-assign list`, `sdr-assign adopt`. A device
+is a serial, `port:<usb-port>` (RX-888), or a kind (`rx888`, `hackrf`,
+`rtlsdr`) when only one of that kind is attached. Services: `radiod[:mission]`,
+`openwebrx`, `rtltcp`, `sdrangelsrv`, `soapysdrsrv`. Each move releases the
+current owner (and any other service whose config still claims the device),
+waits until `fuser` shows nothing holding the USB device, runs the device's
+handoff hook, then has the new owner's adapter configure and start it, and
+records the result. Refuses to mix the whole-host services (SDRangel server,
+SoapySDR server, which open any device they can see) with other owners unless
+`--force`. `-y` skips the prompt, `-n` is a dry run. The first assignment on a
+host with no record adopts the current claims.
+
+- **device-inventory.sh** (`SIGedge inventory`)
+Read-only. One line per attached SDR: its id, its assignment, and who
+actually holds it right now -- process and systemd unit, from `fuser` on
+`/dev/bus/usb/...` (run with `sudo` to see other users' processes, otherwise
+`?`). Warns when assignment, live holder and service configs disagree, when
+ka9q-radio's `rx888_boot` firmware loader is active for an RX-888 assigned
+elsewhere, and when ka9q-radio's udev autostart is enabled. `--detail` adds
+every config-level claim (radiod `serial =`, `RTLTCP_SERIAL`, OpenWebRX+,
+SDRangel/SoapySDR server state); `--json` is machine-readable.
+
+- **service_toggle**
+Compatibility wrapper for "everything to one side": `service_toggle
+ka9q-radio [mission ...]` assigns each configured mission's device to it,
+`service_toggle openwebrx` assigns every attached device to OpenWebRX+, and
+`service_toggle off` releases every assigned device -- all through
+`sdr-assign`, so each device still gets the full handoff and the record stays
+correct. `-y`, `-n` as above.
+
+- **adapters/**
+One file per service, sourced by `sdr-assign` and `device-inventory.sh`:
+`adapter_kinds`, `adapter_whole_host`, `adapter_installed`, `adapter_units`,
+`adapter_claims` (what its own config says it uses), `adapter_acquire` and
+`adapter_release` (configure/start or stop it for one device). `radiod`
+pins `serial =` in the mission and starts `radiod@<mission>`; `openwebrx`
+rewrites OpenWebRX+'s device list with `owrx_settings.py` (assigned entries
+enabled and pinned, the rest disabled, never deleted); `rtltcp` writes
+`RTLTCP_SERIAL` to `/etc/default/rtltcp`; `sdrangelsrv` and `soapysdrsrv` run
+their unit while any device is assigned to them. A new service plugs in by
+adding a file here and its name to `SDR_SERVICES` in `lib/sdr_common.sh`.
+
+- **handoff/**
+Device-type hooks run between release and acquire. `handoff/rx888` masks
+ka9q-radio's `rx888_boot.service` unless `radiod` is the new owner, then
+resets the FX3 to its bootloader with `fx3_cmd reset` (RESETFX3), falling
+back to `fx3_cmd usbreset`, so the next owner loads its own firmware. HackRF
+and RTL-SDR need no handoff.
+
+- **lib/sdr_common.sh**
+Shared by all of the above: device discovery from sysfs (no device is
+opened), live holders via `fuser`, the assignment record, and adapter
+loading. An RX-888 is identified by USB port because its serial changes with
+its firmware state.
+
+- **sdr-access**
+One access model for SDR hardware. `install` creates the `sdr` group and
+installs `config/99-sigedge-sdr.rules` (every supported SDR `0660 root:sdr`,
+overriding the vendor rules' mix of `plugdev`/`radio`); `sync` adds the
+service accounts that exist (`openwebrx`, `radio`) and the invoking user to
+`sdr`; `check` reports the rule, the group and each device node's owner.
+`setup_core` runs `install`; `pkg_openwebrxplus` and `pkg_ka9q-radio` run
+`sync`.
+
+- **driver-check**
+Read-only driver-stack check, run at the end of `SIGedge setup`: the same
+SoapySDR driver registered twice (e.g. SIGedge's SoapyHackRF and the
+distro's `soapysdr0.8-module-hackrf`, with load order deciding which runs),
+binaries in `/usr/local` or SIGedge-built packages that can't load a library,
+`/usr/local` Python modules hiding packaged ones (PROBLEM, exit 1), and
+`/usr/local` libraries shadowing packaged ones of the same soname (NOTE --
+often deliberate).
+
+Regression test: `tests/sdr-assign-test.sh` exercises all of this in a
+sandbox (fake sysfs, systemctl, sudo, fx3_cmd) without root or hardware.
 
 ## Environment support
 - **SIGedge_env**

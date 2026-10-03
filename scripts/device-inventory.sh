@@ -10,10 +10,9 @@
 #     RTLSDR_SERIAL/HACKRF_SERIAL/RX888_SERIAL) plus each mission's live
 #     systemd enabled/active state, cross-matched against what's actually
 #     plugged in right now
-#   - OpenWebRX's live systemd enabled/active state (it's a single
-#     service, not per-mission, and its own device selection lives in
-#     /var/lib/openwebrx/settings.json via its web UI, not a SIGedge
-#     config -- out of scope to parse here)
+#   - OpenWebRX+'s live systemd enabled/active state, and the devices
+#     enabled in its own /var/lib/openwebrx/settings.json (read through
+#     scripts/adapters/openwebrx)
 #   - RTL-TCP server's RTLTCP_SERIAL override (see config/rtltcp.service),
 #     cross-matched the same way
 # and flags the one conflict that can be confirmed: a radiod mission and
@@ -35,11 +34,22 @@
 # and none of it opens a device the way rtl_eeprom/rtl_test/hackrf_info
 # would (which could fail or, worse, contend with a real owner).
 #
-# This tool answers "what's attached, what claims it, and is that claim
-# live" -- it does not resolve conflicts or assign/switch anything itself.
-# Use scripts/service_toggle to actually switch a device between radiod
-# and OpenWebRX; see README.md's device-ownership section for the
-# underlying one-owner-per-device policy.
+# On top of those config-level claims it shows, per device:
+#   - its assignment in /etc/sigedge/assignments (scripts/sdr-assign)
+#   - who actually holds the USB device open right now -- process and
+#     systemd unit, via fuser on /dev/bus/usb/<bus>/<dev>. That's the
+#     ground truth whichever driver a service uses. Seeing other users'
+#     processes needs root: run with sudo, or with a cached sudo
+#     credential, otherwise this column shows "?".
+# and warns when they disagree (held by a unit other than the assigned
+# owner, another service's config also claiming the device, ka9q-radio's
+# rx888_boot firmware loader left active for an RX-888 assigned
+# elsewhere, ka9q-radio's udev autostart enabled).
+#
+# This tool answers "what's attached, who owns it, and is that true right
+# now" -- it does not change anything. Use scripts/sdr-assign to move a
+# device between services; see README.md's device-ownership section for
+# the underlying one-owner-per-device policy.
 #
 # Usage: ./scripts/device-inventory.sh [--detail|--json]
 #   No sudo required either way.
@@ -56,6 +66,10 @@
 #            for other tooling to consume.
 
 set -uo pipefail
+
+INVENTORY_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+# shellcheck source=lib/sdr_common.sh
+source "${INVENTORY_HOME}/scripts/lib/sdr_common.sh"
 
 JSON_OUT=0
 DETAIL_OUT=0
@@ -167,26 +181,31 @@ unit_state_text()
 ### ---------------------------------------------------------------------
 
 DEV_VIDPID=(); DEV_LABEL=(); DEV_BUSDEV=(); DEV_SERIAL=()
-for vidpid in "${!DEVICE_LABELS[@]}"; do
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        busdev="$(echo "$line" | sed -n 's/^Bus \([0-9]*\) Device \([0-9]*\):.*/\1:\2/p')"
-        serial="$(lsusb -v -s "$busdev" 2>/dev/null \
-            | awk '/iSerial/ {for (i=3; i<=NF; i++) printf "%s ", $i; print ""}' \
-            | sed 's/[[:space:]]*$//')"
+DEV_KIND=(); DEV_ID=(); DEV_PORT=(); DEV_NODE=(); DEV_ASSIGNED=(); DEV_HELD=(); DEV_HELD_UNITS=()
+HOLDERS_KNOWN=1
+while IFS='|' read -r kind vidpid port bus dev node serial id label; do
+    [[ -n "$kind" ]] || continue
+    DEV_VIDPID+=("$vidpid")
+    DEV_LABEL+=("$label")
+    DEV_BUSDEV+=("$(printf '%03d:%03d' "$bus" "$dev")")
+    DEV_SERIAL+=("$serial")
+    DEV_KIND+=("$kind"); DEV_ID+=("$id"); DEV_PORT+=("$port"); DEV_NODE+=("$node")
+    DEV_ASSIGNED+=("$(sdr_assignment_get "$id" 2>/dev/null)")
 
-        DEV_VIDPID+=("$vidpid")
-        DEV_LABEL+=("${DEVICE_LABELS[$vidpid]}")
-        DEV_BUSDEV+=("$busdev")
-        DEV_SERIAL+=("$serial")
+    holders="$(sdr_holders "$node")"; rc=$?
+    if (( rc == 2 )); then
+        HOLDERS_KNOWN=0
+        DEV_HELD+=("?"); DEV_HELD_UNITS+=("")
+    elif [[ -z "$holders" ]]; then
+        DEV_HELD+=("-"); DEV_HELD_UNITS+=("")
+    else
+        DEV_HELD+=("$(echo "$holders" | awk -F'|' '{printf "%s%s(%s)", (NR>1?", ":""), $3, $2}')")
+        DEV_HELD_UNITS+=("$(echo "$holders" | awk -F'|' '{print $3}' | sort -u | paste -sd' ')")
+    fi
 
-        kind="${DEVICE_KIND[$vidpid]:-}"
-        if [[ -n "$kind" ]]; then
-            ATTACHED_COUNT[$kind]=$(( ${ATTACHED_COUNT[$kind]:-0} + 1 ))
-            [[ -n "$serial" ]] && ATTACHED_SERIALS[$kind]="${ATTACHED_SERIALS[$kind]:-} $serial"
-        fi
-    done < <(lsusb -d "$vidpid" 2>/dev/null)
-done
+    ATTACHED_COUNT[$kind]=$(( ${ATTACHED_COUNT[$kind]:-0} + 1 ))
+    [[ -n "$serial" ]] && ATTACHED_SERIALS[$kind]="${ATTACHED_SERIALS[$kind]:-} $serial"
+done < <(sdr_scan)
 
 shopt -s nullglob
 RADIOD_CONFS=("${KA9Q_CONFIG_DIR}"/radiod@*.conf)
@@ -241,6 +260,68 @@ RTLTCP_ACTIVE_STR="$(unit_active_str "$RTLTCP_UNIT")"
 
 
 ### ---------------------------------------------------------------------
+### Ownership warnings: assignment vs. live holders vs. config claims
+### ---------------------------------------------------------------------
+
+# Units that legitimately hold a device for an assigned service.
+expected_units()
+{
+    local svc="$1" inst="$2"
+    case "$svc" in
+        radiod )      echo "radiod@${inst}.service rx888_boot.service" ;;
+        openwebrx )   echo "openwebrx.service" ;;
+        rtltcp )      echo "rtltcp.service" ;;
+        sdrangelsrv ) echo "sdrangelsrv.service" ;;
+        soapysdrsrv ) echo "soapysdrsrv.service" ;;
+    esac
+}
+
+# Config claims from every installed service: "service kind id instance".
+CLAIMS=()
+for svc in "${SDR_SERVICES[@]}"; do
+    sdr_adapter "$svc" adapter_installed 2>/dev/null || continue
+    while read -r ck cid ci; do
+        [[ -n "$ck" ]] && CLAIMS+=("$svc $ck $cid ${ci:--}")
+    done < <(sdr_adapter "$svc" adapter_claims 2>/dev/null)
+done
+
+WARNINGS=()
+DEV_FLAG=()
+for i in "${!DEV_ID[@]}"; do
+    flag=""
+    read -r a_svc a_inst <<<"${DEV_ASSIGNED[$i]:-}"
+    if [[ -n "${a_svc:-}" && -n "${DEV_HELD_UNITS[$i]}" ]]; then
+        exp=" $(expected_units "$a_svc" "${a_inst:--}") "
+        for u in ${DEV_HELD_UNITS[$i]}; do
+            if [[ "$exp" != *" $u "* ]]; then
+                WARNINGS+=("${DEV_LABEL[$i]} (${DEV_ID[$i]}) is assigned to ${a_svc} but held by ${u}")
+                flag="!"
+            fi
+        done
+    fi
+    for c in "${CLAIMS[@]}"; do
+        read -r c_svc c_kind c_id c_inst <<<"$c"
+        [[ "$c_kind" == "${DEV_KIND[$i]}" ]] || continue
+        [[ "$c_id" == "*" || "$c_id" == "${DEV_ID[$i]}" || "$c_id" == "${DEV_SERIAL[$i]}" ]] || continue
+        [[ "$c_svc" == "${a_svc:-}" ]] && continue
+        if [[ -n "${a_svc:-}" ]]; then
+            WARNINGS+=("${DEV_LABEL[$i]} (${DEV_ID[$i]}) is assigned to ${a_svc}, but ${c_svc}$([[ "$c_inst" != "-" ]] && echo " ${c_inst}")'s config also claims it")
+            flag="!"
+        fi
+    done
+    if [[ "${DEV_KIND[$i]}" == "rx888" && -n "${a_svc:-}" && "$a_svc" != "radiod" ]] && \
+       systemctl list-unit-files rx888_boot.service --no-legend 2>/dev/null | grep -q . && \
+       [[ "$(systemctl is-enabled rx888_boot.service 2>/dev/null)" != "masked" ]]; then
+        WARNINGS+=("rx888_boot.service is not masked: ka9q-radio will load its firmware into the RX-888 assigned to ${a_svc} (fix: scripts/sdr-assign rx888 ${a_svc} again, or systemctl mask rx888_boot.service)")
+        flag="!"
+    fi
+    DEV_FLAG+=("$flag")
+done
+[[ -f /etc/radio/enable-udev-autostart ]] && \
+    WARNINGS+=("/etc/radio/enable-udev-autostart exists: ka9q-radio starts its own ka9q-radio@ instance for SDRs as they're plugged in, outside SIGedge's assignments")
+
+
+### ---------------------------------------------------------------------
 ### JSON output
 ### ---------------------------------------------------------------------
 
@@ -273,11 +354,22 @@ print_json() {
 
     echo '  "devices": ['
     for i in "${!DEV_VIDPID[@]}"; do
-        printf '    {"vidpid": "%s", "label": "%s", "bus_device": "%s", "serial": %s}%s\n' \
+        read -r a_svc a_inst <<<"${DEV_ASSIGNED[$i]:-}"
+        held="null"
+        if [[ "${DEV_HELD[$i]}" != "?" ]]; then
+            held="[$(for u in ${DEV_HELD_UNITS[$i]}; do printf '"%s",' "$(json_escape "$u")"; done | sed 's/,$//')]"
+        fi
+        printf '    {"kind": "%s", "id": %s, "vidpid": "%s", "label": "%s", "port": "%s", "bus_device": "%s", "serial": %s, "assigned_service": %s, "assigned_instance": %s, "held_by_units": %s}%s\n' \
+            "$(json_escape "${DEV_KIND[$i]}")" \
+            "$(json_str_or_null "${DEV_ID[$i]}")" \
             "$(json_escape "${DEV_VIDPID[$i]}")" \
             "$(json_escape "${DEV_LABEL[$i]}")" \
+            "$(json_escape "${DEV_PORT[$i]}")" \
             "$(json_escape "${DEV_BUSDEV[$i]}")" \
             "$(json_str_or_null "${DEV_SERIAL[$i]}")" \
+            "$(json_str_or_null "${a_svc:-}")" \
+            "$(json_str_or_null "$([[ "${a_inst:--}" != "-" ]] && echo "$a_inst")")" \
+            "$held" \
             "$([[ $i -lt $((${#DEV_VIDPID[@]} - 1)) ]] && echo ',')"
     done
     echo '  ],'
@@ -311,7 +403,12 @@ print_json() {
 
     echo '  },'
 
-    printf '  "conflict": %s\n' "$([[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]] && echo true || echo false)"
+    printf '  "conflict": %s,\n' "$([[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]] && echo true || echo false)"
+    echo '  "warnings": ['
+    for i in "${!WARNINGS[@]}"; do
+        printf '    "%s"%s\n' "$(json_escape "${WARNINGS[$i]}")" "$([[ $i -lt $((${#WARNINGS[@]} - 1)) ]] && echo ',')"
+    done
+    echo '  ]'
 
     echo '}'
 }
@@ -340,50 +437,31 @@ print_concise() {
         return
     fi
 
-    local i j vidpid kind serial service enabled mission
-
-    printf '%-34s %-34s %-26s %s\n' "DEVICE" "SERIAL" "SERVICE" "ENABLED"
+    local i a
+    printf '%-31s %-36s %-26s %s\n' "DEVICE" "ID" "ASSIGNED TO" "HELD BY (live)"
     for i in "${!DEV_VIDPID[@]}"; do
-        vidpid="${DEV_VIDPID[$i]}"
-        kind="${DEVICE_KIND[$vidpid]:-}"
-        serial="${DEV_SERIAL[$i]}"
-        service="-"
-        enabled="-"
-
-        if [[ -n "$serial" ]]; then
-            for j in "${!RADIOD_MISSION[@]}"; do
-                if [[ "$(echo "${RADIOD_HW[$j]:-}" | tr '[:upper:]' '[:lower:]')" == "$kind" \
-                    && "${RADIOD_SERIAL[$j]}" == "$serial" ]]; then
-                    mission="${RADIOD_MISSION[$j]#radiod@}"
-                    mission="${mission%.conf}"
-                    service="radiod@${mission}"
-                    enabled="${RADIOD_ENABLED[$j]}"
-                    break
-                fi
-            done
-
-            if [[ "$service" == "-" && "$kind" == "rtlsdr" && "$serial" == "$RTLTCP_SERIAL" ]]; then
-                service="rtltcp"
-                enabled="$RTLTCP_ENABLED"
-            fi
-        fi
-
-        printf '%-34s %-34s %-26s %s\n' \
-            "${DEV_LABEL[$i]}" "${serial:-<none exposed>}" "$service" "$enabled"
+        a="${DEV_ASSIGNED[$i]:-(unassigned)}"
+        printf '%-31s %-36s %-26s %s%s\n' \
+            "${DEV_LABEL[$i]}" "${DEV_ID[$i]:-<no serial>}" "${a% -}" "${DEV_HELD[$i]}" \
+            "$([[ -n "${DEV_FLAG[$i]}" ]] && echo '   <-- see warnings')"
     done
 
-    echo
-    echo "OpenWebRX ($OPENWEBRX_UNIT): enabled=$OPENWEBRX_ENABLED"
-    echo "  (whole-host, no per-device pin -- device selection is in /var/lib/openwebrx/settings.json)"
-
+    if (( ! HOLDERS_KNOWN )); then
+        echo
+        echo "HELD BY shows '?' without root; run with sudo to see which process holds each device."
+    fi
+    if (( ${#WARNINGS[@]} )); then
+        echo
+        printf 'WARNING: %s\n' "${WARNINGS[@]}"
+    fi
     if [[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]]; then
         echo
-        echo "** CONFLICT: a radiod@ mission and OpenWebRX are both active at once -- an SDR must"
-        echo "** have exactly one active owner. Pick a side: scripts/service_toggle ka9q-radio|openwebrx|off"
+        echo "Note: radiod and OpenWebRX+ are both running. That's fine when each owns different"
+        echo "devices (see ASSIGNED TO / HELD BY); move a device with scripts/sdr-assign."
     fi
 
     echo
-    echo "Pass --detail for the full diagnostic report, --json for machine-readable output."
+    echo "Move a device: scripts/sdr-assign <id|kind> <service>. --detail for every claim source, --json for tooling."
 }
 
 
@@ -406,6 +484,9 @@ print_detail() {
             echo "  [${DEV_VIDPID[$i]}] ${DEV_LABEL[$i]}"
             echo "    USB:    Bus ${DEV_BUSDEV[$i]}"
             echo "    Serial: ${DEV_SERIAL[$i]:-<none exposed>}"
+            echo "    ID:     ${DEV_ID[$i]:-<none: not assignable>}  (port ${DEV_PORT[$i]})"
+            echo "    Assigned to: ${DEV_ASSIGNED[$i]:-(unassigned)}" | sed 's/ -$//'
+            echo "    Held by:     ${DEV_HELD[$i]}$([[ "${DEV_HELD[$i]}" == "?" ]] && echo '  (needs root to see)')"
             echo
         done
     fi
@@ -446,14 +527,20 @@ print_detail() {
         echo "  not installed"
     else
         echo "  enabled=$OPENWEBRX_ENABLED active=$OPENWEBRX_ACTIVE_STR"
-        echo "      -> device selection lives in /var/lib/openwebrx/settings.json (web UI), not shown here"
+        local c c_svc c_kind c_id shown=0
+        for c in "${CLAIMS[@]}"; do
+            read -r c_svc c_kind c_id _ <<<"$c"
+            [[ "$c_svc" == "openwebrx" ]] || continue
+            echo "      -> enabled device: ${c_kind} $([[ "$c_id" == "*" ]] && echo "(any -- not pinned)" || echo "$c_id")"
+            shown=1
+        done
+        (( shown )) || echo "      -> no enabled devices (or the service is disabled)"
     fi
     echo
 
     if [[ "$ANY_RADIOD_ACTIVE" -eq 1 && "$OPENWEBRX_ACTIVE" -eq 1 ]]; then
-        echo "  ** CONFLICT: at least one radiod@ mission AND OpenWebRX are both active at once. **"
-        echo "  ** An SDR must have exactly one active owner -- pick a side with                  **"
-        echo "  ** 'scripts/service_toggle ka9q-radio|openwebrx|off'.                              **"
+        echo "  Note: a radiod@ mission and OpenWebRX+ are both active. That's only a conflict if"
+        echo "  they use the same device -- check the per-device Assigned to / Held by lines above."
         echo
     fi
 
@@ -483,6 +570,14 @@ print_detail() {
     fi
     echo
 
+    echo "== Warnings =="
+    if (( ${#WARNINGS[@]} )); then
+        printf '  %s\n' "${WARNINGS[@]}"
+    else
+        echo "  (none)"
+    fi
+    echo
+
     echo "== Reading this =="
     echo "An 'unpinned' radiod mission or RTL-TCP server with no serial constraint will"
     echo "grab whichever matching device it finds first."
@@ -496,9 +591,11 @@ print_detail() {
     echo "whenever two always-on consumers need the same device type."
     echo ""
     echo "enabled=/active= reflects live systemd state, not just what's configured -- a mission's"
-    echo "radiod@<mission>.conf can exist and still be disabled/inactive. Use scripts/service_toggle"
-    echo "to switch a device between radiod and OpenWebRX; it always stops+disables the side being"
-    echo "left before starting the other."
+    echo "radiod@<mission>.conf can exist and still be disabled/inactive. 'Held by' is the live"
+    echo "truth: the process that has the USB device open right now (OpenWebRX+ only opens a"
+    echo "device while someone is listening). Use scripts/sdr-assign to move a device between"
+    echo "services; it releases the old owner, checks the device is free, runs the device's"
+    echo "handoff, then starts the new owner."
     echo ""
     echo "Pass --json for a machine-readable version of everything above, or omit both flags for"
     echo "the concise per-device summary."

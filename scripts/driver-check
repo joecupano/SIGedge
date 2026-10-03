@@ -1,0 +1,146 @@
+#!/bin/bash
+
+###
+### SIGedge
+###
+### driver-check
+###
+###
+### 20261002-0000
+###
+### Finds driver-stack problems that break services in ways their own
+### feature checks don't catch. Each check here was a real failure:
+###
+###   duplicate SoapySDR modules   the same driver registered twice, e.g.
+###                                SIGedge's SoapyHackRF in /usr/local and
+###                                the distro's soapysdr0.8-module-hackrf
+###                                (pulled in as a recommends of
+###                                libsoapysdr0.8). SoapySDR loads one and
+###                                skips the other, so which code runs
+###                                depends on load order.
+###   missing shared libraries     binaries that can't load, e.g. a
+###                                prebuilt debs/ package linked against a
+###                                library version this release doesn't
+###                                ship (direwolf and libgps.so.28).
+###   /usr/local library shadows   a /usr/local library with the same
+###                                soname as a dpkg-managed one; the
+###                                /usr/local copy wins. (NOTE: often
+###                                deliberate, e.g. a newer libhackrf.)
+###   /usr/local Python shadows    a /usr/local dist-packages module that
+###                                hides a dpkg-managed one of the same name
+###                                (/usr/local precedes /usr on sys.path).
+###
+### Read-only. Usage: scripts/driver-check [--quiet]
+###   Exit status: 0 = no PROBLEMs (NOTEs allowed), 1 = PROBLEMs found.
+###
+
+QUIET=0
+[[ "${1:-}" == "--quiet" ]] && QUIET=1
+
+PROBLEMS=0
+NOTES=0
+problem() { PROBLEMS=$((PROBLEMS + 1)); echo "  PROBLEM: $*"; }
+note()    { NOTES=$((NOTES + 1)); echo "  NOTE: $*"; }
+section() { (( QUIET )) || echo "== $* =="; }
+ok()      { (( QUIET )) || echo "  ok"; }
+owner()   { local o; o="$(dpkg -S "$(readlink -f "$1")" 2>/dev/null | head -1 | cut -d: -f1)"; [[ -n "$o" ]] && echo "$o"; }
+
+TRIPLET="$(gcc -dumpmachine 2>/dev/null || dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null)"
+
+# 1. Duplicate SoapySDR modules
+section "SoapySDR modules"
+n=$PROBLEMS
+if command -v SoapySDRUtil >/dev/null; then
+    while IFS= read -r line; do
+        # [ERROR] SoapySDR::loadModule(/usr/local/.../libHackRFSupport.so)
+        #   duplicate entry for hackrf (/usr/lib/.../libHackRFSupport.so)
+        if [[ "$line" =~ loadModule\((.*)\) ]]; then
+            skipped="${BASH_REMATCH[1]}"
+        elif [[ "$line" =~ duplicate\ entry\ for\ ([^ ]+)\ \((.*)\) ]]; then
+            drv="${BASH_REMATCH[1]}"; loaded="${BASH_REMATCH[2]}"
+            problem "driver '${drv}' is installed twice: ${loaded} [$(owner "$loaded" || true)] is used, ${skipped:-?} [$(owner "${skipped:-/nonexistent}" || echo 'not packaged')] is skipped"
+            pkg="$(owner "$loaded")"
+            [[ -n "$pkg" && "${skipped:-}" == /usr/local/* ]] && \
+                echo "           keep one: sudo apt-get remove ${pkg}   (SIGedge builds its own ${drv} module)"
+        fi
+    # --check loads every module (--info doesn't) without enumerating any
+    # hardware; strip the ANSI colors around SoapySDR's error lines.
+    done < <(SoapySDRUtil --check=sigedge-none 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+else
+    (( QUIET )) || echo "  SoapySDRUtil not installed; skipped"
+fi
+(( PROBLEMS == n )) && ok
+
+# 2. Missing shared libraries in /usr/local and in SIGedge-built packages
+section "Missing shared libraries"
+n=$PROBLEMS
+declare -A seen=()
+check_elf()
+{
+    local f="$1" missing
+    [[ -f "$f" && ! -L "$f" && -z "${seen[$f]:-}" ]] || return 0
+    seen[$f]=1
+    head -c4 "$f" 2>/dev/null | grep -q 'ELF' || return 0
+    missing="$(ldd "$f" 2>/dev/null | awk '/not found/ {print $1}' | sort -u | paste -sd' ')"
+    [[ -n "$missing" ]] && problem "${f} [$(owner "$f" || echo 'not packaged')] needs ${missing}"
+}
+shopt -s nullglob
+for f in /usr/local/bin/* /usr/local/sbin/* /usr/local/lib/*.so* /usr/local/lib/SoapySDR/modules*/*.so \
+         /usr/local/lib/"${TRIPLET}"/*.so*; do
+    check_elf "$f"
+done
+# SIGedge's checkinstall-built packages carry the repo maintainer address.
+while read -r pkg; do
+    while read -r f; do
+        [[ "$f" == */bin/* || "$f" == *.so* ]] && check_elf "$f"
+    done < <(dpkg -L "$pkg" 2>/dev/null)
+done < <(dpkg-query -W -f='${Package} ${Maintainer}\n' 2>/dev/null | awk '/joe@cupano.com/ {print $1}')
+(( PROBLEMS == n )) && ok
+
+# 3. /usr/local libraries with the same soname as a dpkg-managed one
+section "/usr/local library shadows"
+n=$NOTES
+for f in /usr/local/lib/*.so.* /usr/local/lib/"${TRIPLET}"/*.so.*; do
+    [[ -f "$f" && ! -L "$f" ]] || continue
+    soname="$(objdump -p "$f" 2>/dev/null | awk '/SONAME/ {print $2}')"
+    [[ -n "$soname" ]] || continue
+    for sys in /usr/lib/"${TRIPLET}"/"$soname" /lib/"${TRIPLET}"/"$soname"; do
+        if [[ -e "$sys" ]] && pkg="$(owner "$sys")" && [[ -n "$pkg" ]]; then
+            note "${f} is used instead of ${sys} [${pkg}] (both ${soname}) -- fine if intended"
+            break
+        fi
+    done
+done
+(( NOTES == n )) && ok
+
+# 4. /usr/local Python modules hiding dpkg-managed ones
+section "/usr/local Python shadows"
+n=$PROBLEMS
+for d in /usr/local/lib/python3*/dist-packages; do
+    for m in "$d"/*; do
+        name="$(basename "$m")"
+        case "$name" in
+            *.dist-info|*.egg-info|*.pth|__pycache__ ) continue ;;
+            *.egg ) name="${name%%-*}" ;;
+            *.py ) name="${name%.py}" ;;
+            *.so ) name="${name%%.*}" ;;
+        esac
+        for sys in /usr/lib/python3/dist-packages/"$name" /usr/lib/python3/dist-packages/"$name".py \
+                   /usr/lib/python3/dist-packages/"$name".*.so; do
+            if [[ -e "$sys" ]] && pkg="$(owner "$sys")" && [[ -n "$pkg" ]]; then
+                problem "${m} hides ${sys} [${pkg}]"
+                break
+            fi
+        done
+    done
+done
+(( PROBLEMS == n )) && ok
+
+if (( PROBLEMS )); then
+    echo
+    echo "${PROBLEMS} driver-stack problem(s) found${NOTES:+, ${NOTES} note(s)}."
+    exit 1
+fi
+(( NOTES && ! QUIET )) && { echo; echo "No problems; ${NOTES} note(s)."; exit 0; }
+(( QUIET )) || { echo; echo "No driver-stack problems found."; }
+exit 0

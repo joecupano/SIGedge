@@ -1,0 +1,40 @@
+# shellcheck shell=bash
+###
+### SIGedge adapter: rtltcp (rtl_tcp server, config/rtltcp.service)
+###
+### One RTL-SDR, pinned by serial through RTLTCP_SERIAL in
+### /etc/default/rtltcp (read by the unit's EnvironmentFile=).
+###
+
+RTLTCP_UNIT="rtltcp.service"
+RTLTCP_ENV="${RTLTCP_ENV:-/etc/default/rtltcp}"
+
+adapter_kinds()      { echo "rtlsdr"; }
+adapter_whole_host() { return 1; }
+adapter_installed()  { sdr_unit_exists "$RTLTCP_UNIT"; }
+adapter_units()      { echo "$RTLTCP_UNIT"; }
+
+adapter_claims()
+{
+    local serial=""
+    sdr_unit_enabled "$RTLTCP_UNIT" || sdr_unit_active "$RTLTCP_UNIT" || return 0
+    [[ -r "$RTLTCP_ENV" ]] && serial="$(sed -n 's/^[[:space:]]*RTLTCP_SERIAL[[:space:]]*=[[:space:]]*//p' "$RTLTCP_ENV" | head -1)"
+    echo "rtlsdr ${serial:-*} -"
+}
+
+adapter_acquire()
+{
+    local id="$2"
+    if [[ -z "$id" ]]; then
+        sdr_err "this RTL-SDR reports no serial; set one first (SIGedge device install rtlsdr, or rtl_eeprom -s)"
+        return 1
+    fi
+    printf 'RTLTCP_SERIAL=%s\n' "$id" | sdr_sudo_write "$RTLTCP_ENV" || return 1
+    sdr_sudo systemctl stop "$RTLTCP_UNIT" 2>/dev/null
+    sdr_unit_start "$RTLTCP_UNIT"
+}
+
+adapter_release()
+{
+    sdr_unit_stop "$RTLTCP_UNIT"
+}

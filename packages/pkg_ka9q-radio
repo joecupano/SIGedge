@@ -333,6 +333,17 @@ case "$ACTION" in
         sudo udevadm control --reload-rules
         sudo udevadm trigger
 
+        # ka9q-radio's service account joins the shared "sdr" device group
+        # (scripts/sdr-access), and its rx888_boot firmware loader -- which
+        # loads ka9q's firmware into any RX-888 in bootloader mode -- stays
+        # masked while an RX-888 is assigned to anything but radiod.
+        if [[ -x "${SIGEDGE_SCRIPTS:-}/sdr-access" ]]; then
+            "${SIGEDGE_SCRIPTS}/sdr-access" sync || return 1
+        fi
+        if awk '!/^#/ && $1=="rx888" && $3!="radiod" {f=1} END {exit !f}' /etc/sigedge/assignments 2>/dev/null; then
+            sudo systemctl mask rx888_boot.service || return 1
+        fi
+
         if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
             grep "ka9q-radio" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
         fi
@@ -394,6 +405,17 @@ case "$ACTION" in
         sudo systemctl daemon-reload || return 1
         sudo udevadm control --reload-rules || return 1
         sudo udevadm trigger || return 1
+
+        # ka9q-radio's service account joins the shared "sdr" device group
+        # (scripts/sdr-access), and its rx888_boot firmware loader -- which
+        # loads ka9q's firmware into any RX-888 in bootloader mode -- stays
+        # masked while an RX-888 is assigned to anything but radiod.
+        if [[ -x "${SIGEDGE_SCRIPTS:-}/sdr-access" ]]; then
+            "${SIGEDGE_SCRIPTS}/sdr-access" sync || return 1
+        fi
+        if awk '!/^#/ && $1=="rx888" && $3!="radiod" {f=1} END {exit !f}' /etc/sigedge/assignments 2>/dev/null; then
+            sudo systemctl mask rx888_boot.service || return 1
+        fi
 
         if [[ -n "${SIGEDGE_PKGLIST:-}" && -f "$SIGEDGE_PKGLIST" && -n "${SIGEDGE_INSTALLED:-}" ]]; then
             grep "ka9q-radio" "$SIGEDGE_PKGLIST" >> "$SIGEDGE_INSTALLED" || true
