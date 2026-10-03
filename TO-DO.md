@@ -47,4 +47,7 @@
   handoff falsely reported failure (the RX-888 id is now the socket's USB 2
   path); the failed handoff left a stale assignment; and that stale record
   made OpenWebRX+ get a second RX-888 entry (only one RX-888 assignment is
-  now honoured).
+  now honoured). Re-run after the fix (`41e576e`): `assign rx888 none` reset
+  the RX-888 to its bootloader with no fallback and no error, `assign rx888
+  openwebrx` reused the original entry (gain kept), the id stayed `port:3-4`
+  across both buses, and OpenWebRX+ reloaded its firmware and streamed.
