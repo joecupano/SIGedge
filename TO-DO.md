@@ -2,20 +2,6 @@
 
 ## Open
 
-- [ ] **Rebuild `debs/direwolf_current_arm64.deb` on an arm64 host.**
-  The amd64 package was rebuilt on Ubuntu 24.04 on 2026-09-30 (PR #3).
-  The arm64 one is probably still linked against `libgps.so.28` and has
-  no `Depends`, so on current releases it would install cleanly and then
-  fail when direwolf starts. Rebuild it on an arm64 host such as a Pi:
-
-  ```bash
-  ./SIGedge package direwolf
-  dpkg-deb -f debs/direwolf_current_arm64.deb Depends  # should list libgps30t64
-  ldd "$(command -v direwolf)" | grep 'not found'      # should print nothing
-  ```
-
-  Then commit the new `debs/direwolf_current_arm64.deb`.
-
 - [ ] **Confirm `RESETFX3` works under both RX-888 firmwares.** The handoff
   (`scripts/handoff/rx888`) resets the FX3 with `fx3_cmd reset`, falling back
   to `fx3_cmd usbreset`. rx888-firmware documents both for its own
@@ -48,3 +34,10 @@
   only style preferences the rest of SIGedge doesn't follow either
   (SC2250 `${var}` braces, SC2312 masked return values, SC2249 default
   `case` branches).
+
+- [x] **Rebuild `debs/direwolf_current_arm64.deb`, 2026-10-02.** Built on
+  sigpi (Raspberry Pi, arm64) with `./SIGedge package direwolf` (commit
+  `6eb4a35`). The package now declares its Depends, including
+  `libgps30t64` and `libhamlib4t64`, installs cleanly, has no missing
+  libraries, and runs (`Dire Wolf Release 1.8.1`). Both the amd64 and
+  arm64 packages are now built against libgps 30.
