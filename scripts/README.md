@@ -121,7 +121,7 @@ its firmware state.
 
 - **sdr-access**
 One access model for SDR hardware. `install` creates the `sdr` group and
-installs `config/99-sigedge-sdr.rules` (every supported SDR `0660 root:sdr`,
+installs `config/10-sigedge-sdr.rules` (every supported SDR `0660 root:sdr`,
 overriding the vendor rules' mix of `plugdev`/`radio`); `sync` adds the
 service accounts that exist (`openwebrx`, `radio`) and the invoking user to
 `sdr`; `check` reports the rule, the group and each device node's owner.

@@ -119,7 +119,7 @@ Each service plugs in through a small adapter in `scripts/adapters/` that knows 
 
 ### Access and drivers
 
-All supported SDR device nodes are owned by one group, `sdr` (mode 0660, `config/99-sigedge-sdr.rules`), and every account that drives hardware — `openwebrx`, ka9q-radio's `radio`, the operator's login — is a member, so a device works the same for whichever service gets it. `scripts/sdr-access {install|sync|check}` manages this; `SIGedge setup` installs it. Group membership takes effect when a service restarts, or at the user's next login.
+All supported SDR device nodes are owned by one group, `sdr` (mode 0660, `config/10-sigedge-sdr.rules`), and every account that drives hardware — `openwebrx`, ka9q-radio's `radio`, the operator's login — is a member, so a device works the same for whichever service gets it. `scripts/sdr-access {install|sync|check}` manages this; `SIGedge setup` installs it. Group membership takes effect when a service restarts, or at the user's next login.
 
 `scripts/driver-check` finds driver-stack problems that break services in ways their own checks don't: the same SoapySDR driver installed twice (SIGedge's build and the distro's), binaries that can't load a library, and `/usr/local` copies shadowing packaged libraries or Python modules. `SIGedge setup` runs it at the end; run it again after installing anything by hand.
 

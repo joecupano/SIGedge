@@ -92,7 +92,7 @@ _sigedge_openwebrxplus_main() {
 
             # Device access: the openwebrx service account joins the shared
             # "sdr" group that owns every SDR node (scripts/sdr-access,
-            # config/99-sigedge-sdr.rules). Without it, the SoapySDR module
+            # config/10-sigedge-sdr.rules). Without it, the SoapySDR module
             # gets LIBUSB_ERROR_ACCESS and soapy_connector segfaults.
             "${SIGEDGE_SCRIPTS}/sdr-access" sync || return 1
 

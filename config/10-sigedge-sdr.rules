@@ -1,10 +1,13 @@
 # SIGedge SDR access -- installed by scripts/sdr-access to
-# /etc/udev/rules.d/99-sigedge-sdr.rules.
+# /etc/udev/rules.d/10-sigedge-sdr.rules.
 #
 # Every supported SDR belongs to the "sdr" group, mode 0660, whichever
-# vendor or distro rules also match it (librtlsdr, libhackrf, ka9q-radio's
-# rx888 rules, devices/pkg_rx888's 99-rx888.rules, ...). ":=" makes these
-# final, and this file sorts after the 99-rx888 rules it overrides.
+# vendor or distro rules also match it (librtlsdr, libhackrf, libmirisdr,
+# ka9q-radio's rx888 rules, devices/pkg_rx888's 99-rx888.rules, ...).
+# In udev the FIRST ":=" assignment to a key wins and later ones are
+# ignored -- 99-rx888.rules, ka9q-radio's 71-rx888.rules and
+# 60-libmirisdr4.rules all lock MODE with ":=" -- so this file must sort
+# before every one of them: hence 10-.
 # Every service account that drives hardware (openwebrx, radio, the
 # operator's login) joins "sdr"; see `scripts/sdr-access sync`.
 # TAG+="uaccess" keeps desktop-seat access for the logged-in user.

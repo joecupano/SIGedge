@@ -377,7 +377,7 @@ the same script.
    in one state and `0660 root:radio` (`70-rx888-boot.rules`) in another,
    and an account missing the right group gets `LIBUSB_ERROR_ACCESS`,
    then a `soapy_connector` segfault. SIGedge's own rule
-   (`config/99-sigedge-sdr.rules`, installed by `scripts/sdr-access
+   (`config/10-sigedge-sdr.rules`, installed by `scripts/sdr-access
    install` during setup) makes every supported SDR `0660 root:sdr` in
    every state, and `pkg_openwebrxplus` / `pkg_ka9q-radio` add their
    service accounts to `sdr` (`scripts/sdr-access sync`). Check with

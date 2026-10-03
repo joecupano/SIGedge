@@ -9,7 +9,7 @@
 ### 20261002-0000
 ###
 ### One access model for SDR hardware: every supported device node is
-### root:sdr 0660 (config/99-sigedge-sdr.rules), and every account that
+### root:sdr 0660 (config/10-sigedge-sdr.rules), and every account that
 ### drives hardware is in the "sdr" group. Replaces the mix of plugdev
 ### 0666 (99-rx888.rules, 71-rx888.rules) and radio 0660
 ### (70-rx888-boot.rules) that left service accounts unable to open a
@@ -31,8 +31,11 @@ SDR_ACCESS_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/.."
 source "${SDR_ACCESS_HOME}/scripts/lib/sdr_common.sh"
 
 SDR_GROUP="sdr"
-SDR_RULE_SRC="${SDR_ACCESS_HOME}/config/99-sigedge-sdr.rules"
-SDR_RULE_DST="/etc/udev/rules.d/99-sigedge-sdr.rules"
+SDR_RULE_SRC="${SDR_ACCESS_HOME}/config/10-sigedge-sdr.rules"
+SDR_RULE_DST="/etc/udev/rules.d/10-sigedge-sdr.rules"
+# Earlier name: it sorted after rules that lock MODE with ":=", so its own
+# MODE was ignored. Removed on install.
+SDR_RULE_OLD="/etc/udev/rules.d/99-sigedge-sdr.rules"
 
 # Service accounts that open SDR hardware, when they exist on this host:
 #   openwebrx  OpenWebRX+ (packages/pkg_openwebrxplus)
@@ -47,6 +50,9 @@ _sdr_access_main()
         install )
             sdr_sudo groupadd --system -f "$SDR_GROUP" || return 1
             sdr_sudo install -m 0644 "$SDR_RULE_SRC" "$SDR_RULE_DST" || return 1
+            if [[ -e "$SDR_RULE_OLD" ]]; then
+                sdr_sudo rm -f "$SDR_RULE_OLD" || return 1
+            fi
             sdr_sudo udevadm control --reload-rules || return 1
             sdr_sudo udevadm trigger --subsystem-match=usb --action=change || return 1
             _sdr_access_main sync
@@ -75,6 +81,7 @@ _sdr_access_main()
             else
                 echo "rule:    not installed (run: scripts/sdr-access install)"
             fi
+            [[ -e "$SDR_RULE_OLD" ]] && echo "         old ${SDR_RULE_OLD} still present (run: scripts/sdr-access install)"
             members="$(getent group "$SDR_GROUP" | cut -d: -f4)"
             if getent group "$SDR_GROUP" >/dev/null; then
                 echo "group:   ${SDR_GROUP} members: ${members:-(none)}"
@@ -88,7 +95,9 @@ _sdr_access_main()
             local kind node label
             while IFS='|' read -r kind _ _ _ _ node _ _ label; do
                 [[ -n "$kind" ]] || continue
-                printf 'device:  %-32s %s\n' "$label" "$(stat -c '%U:%G %a' "$node" 2>/dev/null)"
+                local own; own="$(stat -c '%U:%G %a' "$node" 2>/dev/null)"
+                printf 'device:  %-32s %s%s\n' "$label" "$own" \
+                    "$([[ "$own" != "root:${SDR_GROUP} 660" ]] && echo "   <-- expected root:${SDR_GROUP} 660")"
             done < <(sdr_scan)
             ;;
 
