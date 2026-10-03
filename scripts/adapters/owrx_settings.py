@@ -110,6 +110,14 @@ def reconcile(path, wanted):
     data = load(path)
     sdrs = data.setdefault("sdrs", {})
     wanted = [w.split(":", 1) for w in wanted]
+    # An RX-888 entry can't be pinned to a device, so only one can usefully
+    # be enabled: keep the first RX-888 assignment, drop any others (e.g. a
+    # stale record left by an earlier failed handoff).
+    rx888 = [w for w in wanted if w[0] == "rx888"]
+    if len(rx888) > 1:
+        print(f"ignoring {len(rx888) - 1} extra RX-888 assignment(s); OpenWebRX+ supports one RX-888",
+              file=sys.stderr)
+        wanted = [w for w in wanted if w[0] != "rx888"] + rx888[:1]
     used = set()
     for kind, ident in wanted:
         if kind not in TYPES:

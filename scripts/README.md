@@ -65,7 +65,7 @@ for the model; these are the pieces.
 - **sdr-assign** (`SIGedge assign`)
 Assigns one device to one service: `sdr-assign <device> <service>[:instance]`,
 `sdr-assign <device> none`, `sdr-assign list`, `sdr-assign adopt`. A device
-is a serial, `port:<usb-port>` (RX-888), or a kind (`rx888`, `hackrf`,
+is a serial, `port:<usb2-path>` (RX-888, e.g. `port:3-4`), or a kind (`rx888`, `hackrf`,
 `rtlsdr`) when only one of that kind is attached. Services: `radiod[:mission]`,
 `openwebrx`, `rtltcp`, `sdrangelsrv`, `soapysdrsrv`. Each move releases the
 current owner (and any other service whose config still claims the device),
@@ -116,8 +116,10 @@ and RTL-SDR need no handoff.
 - **lib/sdr_common.sh**
 Shared by all of the above: device discovery from sysfs (no device is
 opened), live holders via `fuser`, the assignment record, and adapter
-loading. An RX-888 is identified by USB port because its serial changes with
-its firmware state.
+loading. An RX-888 is identified by its physical USB socket (`port:<usb2-path>`,
+the USB 2 side of a USB 3 socket) because both its serial and its bus change
+with its firmware state: the bootloader enumerates at USB 2, the firmware at
+USB 3.
 
 - **sdr-access**
 One access model for SDR hardware. `install` creates the `sdr` group and

@@ -406,10 +406,16 @@ the same script.
    for the old fix: unplug the RX-888 for ~15 s and replug it — an
    actual power cycle, not a reboot. The handoff needs exactly one
    attached RX-888 (`fx3_cmd` talks to the first one it finds). The
-   RX-888's USB serial also changes with its firmware state
-   (`0009090703432E0F` loaded vs. `0000000004BE` in the bootloader on
-   sigedge-mac), which is why SIGedge identifies an RX-888 by USB port
-   (`port:4-4`) rather than serial.
+   RX-888 changes identity with its firmware state, in two ways. Its USB
+   serial changes (`0009090703432E0F` loaded vs. `0000000004BE` in the
+   bootloader on sigedge-mac), and so does its bus: the bootloader runs
+   at USB 2 speed, so a reset RX-888 leaves the USB 3 bus (`4-4`) and
+   reappears on the USB 2 bus (`3-4`) of the same socket. SIGedge
+   identifies an RX-888 by its physical socket, using the USB 2 side's
+   path (`port:3-4` on sigedge-mac), which the kernel links to its USB 3
+   peer, so the id holds through a handoff as long as the RX-888 stays
+   in the same socket. `RESETFX3` confirmed working on sigedge-mac with
+   RX888MK2-Soapy's firmware loaded (2026-10-02).
 4. In the web UI (Settings → SDR devices → Add new device), the exact
    entry is `BBRF103 / RX666 / RX888 / RX888 mkII (SDDC) device (via
    SoapySDR)` — not a generic "SoapySDR device". Sample rate is a fixed

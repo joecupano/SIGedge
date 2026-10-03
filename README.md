@@ -101,7 +101,7 @@ SIGedge assign 00000101 rtltcp            # a device by serial
 SIGedge assign hackrf none                # release it
 ```
 
-(`SIGedge assign` runs `scripts/sdr-assign`.) A device is named by its serial, by `port:<usb-port>` for an RX-888, or by its kind (`rx888`, `hackrf`, `rtlsdr`) when only one of that kind is attached. Every move runs the same sequence:
+(`SIGedge assign` runs `scripts/sdr-assign`.) A device is named by its serial, by its USB socket for an RX-888 (e.g. `port:3-4`, the same in bootloader and firmware mode), or by its kind (`rx888`, `hackrf`, `rtlsdr`) when only one of that kind is attached. Every move runs the same sequence:
 
 1. **Release** the current owner — stop its `radiod` mission, disable the device in OpenWebRX+'s settings, stop `rtl_tcp`, ... — plus any other service whose own config still claims the device.
 2. **Verify** nothing still holds the USB device, by checking `/dev/bus/usb/...` with `fuser` — the ground truth whichever driver a service uses.

@@ -16,10 +16,13 @@
 ### Device identity: an SDR is identified by "<kind> <id>". The id is the
 ### USB serial number for every kind except the RX-888, whose serial
 ### changes with its firmware state (bootloader vs. loaded, and between
-### firmware builds). An RX-888 is identified by its USB port path
-### instead, e.g. "port:4-4", which survives the re-enumeration a
-### firmware handoff causes, as long as it stays plugged into the same
-### port.
+### firmware builds). An RX-888 is identified by the physical USB socket
+### it's plugged into, e.g. "port:3-4". Its bootloader runs at USB 2 speed
+### and its firmware at USB 3, so the same socket shows up as a different
+### sysfs path on each bus (3-4 vs. 4-4 on sigedge-mac); the kernel links
+### the two as "peer" ports, and the id is always the USB 2 side's path.
+### It survives a firmware handoff as long as the device stays in the same
+### socket.
 ###
 
 SDR_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,6 +132,36 @@ sdr_unit_start()
 ### Discovery
 ### ---------------------------------------------------------------------
 
+# USB 2 path of the physical socket a device is in. A USB 3 socket has a
+# USB 2 "peer" port on the companion bus; follow it when the device is on
+# the USB 3 side. A USB 2-only socket is its own path.
+sdr_usb2_port()
+{
+    local port="$1" bus speed pdir peer pname hub n
+    bus="${port%%-*}"
+    speed="$(cat "${SDR_SYSFS_USB}/usb${bus}/speed" 2>/dev/null)"
+    [[ -n "$speed" && "$speed" -gt 480 ]] || { echo "$port"; return; }
+    # The port's directory under its hub: "B-N" hangs off root hub usbB,
+    # "B-x.N" off hub device "B-x".
+    if [[ "$port" == *.* ]]; then
+        hub="${port%.*}"; n="${port##*.}"
+        pdir="${SDR_SYSFS_USB}/${hub}/${hub}:1.0/${hub}-port${n}"
+    else
+        n="${port#*-}"
+        pdir="${SDR_SYSFS_USB}/usb${bus}/${bus}-0:1.0/usb${bus}-port${n}"
+    fi
+    peer="$(readlink -f "${pdir}/peer" 2>/dev/null)"
+    [[ -n "$pdir" && -n "$peer" && -e "$peer" ]] || { echo "$port"; return; }
+    # Port directories are named "usb3-port4" (root hub) or "3-1-port2".
+    pname="$(basename "$peer")"
+    hub="${pname%-port*}"; n="${pname##*-port}"
+    if [[ "$hub" == usb* ]]; then
+        echo "${hub#usb}-${n}"
+    else
+        echo "${hub}.${n}"
+    fi
+}
+
 # One line per attached known SDR:
 #   kind|vidpid|port|busnum|devnum|devnode|serial|id|label
 # Read from sysfs only: no device is opened, no privileges needed.
@@ -146,7 +179,7 @@ sdr_scan()
         serial=""
         [[ -r "$d/serial" ]] && serial="$(<"$d/serial")"
         if [[ "$kind" == "rx888" ]]; then
-            id="port:${port}"
+            id="port:$(sdr_usb2_port "$port")"
         else
             id="${serial}"
         fi
@@ -180,6 +213,12 @@ sdr_resolve()
         return 1
     fi
     printf '%s\n' "${matches[0]}"
+}
+
+# The scan line for an id, if that device is attached right now.
+sdr_find_id()
+{
+    sdr_scan | awk -F'|' -v id="$1" '$8==id {print; exit}'
 }
 
 sdr_count_kind()

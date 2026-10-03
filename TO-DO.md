@@ -2,14 +2,12 @@
 
 ## Open
 
-- [ ] **Confirm `RESETFX3` works under both RX-888 firmwares.** The handoff
-  (`scripts/handoff/rx888`) resets the FX3 with `fx3_cmd reset`, falling back
-  to `fx3_cmd usbreset`. rx888-firmware documents both for its own
-  SDDC_FX3 image, but neither has been run here, and nobody has checked the
-  firmware ka9q-radio's `rx888_boot` loads or the one RX888MK2-Soapy
-  uploads. Needs a host with
-  ka9q-radio installed: assign the RX-888 to `radiod`, then to `openwebrx`,
-  and check it re-enumerates as `04b4:00f3` without being unplugged.
+- [ ] **Confirm `RESETFX3` works under ka9q-radio's RX-888 firmware.** The
+  handoff (`scripts/handoff/rx888`) resets the FX3 with `fx3_cmd reset`.
+  Confirmed with RX888MK2-Soapy's firmware (see Done). Still unchecked: the
+  firmware ka9q-radio's `rx888_boot` loads. Needs ka9q-radio installed: assign
+  the RX-888 to `radiod`, then to `openwebrx`, and check it comes back as
+  `04b4:00f3` without being unplugged.
 
 ## Done
 
@@ -41,3 +39,12 @@
   `libgps30t64` and `libhamlib4t64`, installs cleanly, has no missing
   libraries, and runs (`Dire Wolf Release 1.8.1`). Both the amd64 and
   arm64 packages are now built against libgps 30.
+
+- [x] **`RESETFX3` under RX888MK2-Soapy's firmware, 2026-10-02.** On
+  sigedge-mac, `SIGedge assign rx888 none` reset the RX-888 to its
+  bootloader. That run also exposed three bugs, all fixed: the bootloader
+  enumerates at USB 2, so the device moved from port `4-4` to `3-4` and the
+  handoff falsely reported failure (the RX-888 id is now the socket's USB 2
+  path); the failed handoff left a stale assignment; and that stale record
+  made OpenWebRX+ get a second RX-888 entry (only one RX-888 assignment is
+  now honoured).

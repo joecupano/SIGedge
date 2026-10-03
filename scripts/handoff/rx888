@@ -3,7 +3,7 @@
 ###
 ### SIGedge
 ###
-### scripts/handoff/rx888 <new-service> <usb-port>
+### scripts/handoff/rx888 <new-service> <device-id>
 ###
 ###
 ### 20261002-0000
@@ -26,7 +26,10 @@
 ###    to a host-side USB reset (`fx3_cmd usbreset`), which on this
 ###    firmware also returns it to the bootloader. The next owner then
 ###    loads its own firmware: radiod through rx888_boot, OpenWebRX+
-###    through the SDDC driver when it opens the device.
+###    through the SDDC driver when it opens the device. The bootloader
+###    runs at USB 2 speed, so the device reappears on the USB 2 bus
+###    (e.g. 3-4 instead of 4-4); it's found again by its id, which names
+###    the physical socket (see lib/sdr_common.sh).
 ###
 ### fx3_cmd comes from rx888-firmware's tests/ (installed to
 ### /usr/local/bin by devices/pkg_rx888). It talks to the first RX-888 it
@@ -40,17 +43,20 @@ HANDOFF_HOME="$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}")")/../.."
 # shellcheck source=../lib/sdr_common.sh
 source "${HANDOFF_HOME}/scripts/lib/sdr_common.sh"
 
-to="${1:?usage: handoff/rx888 <new-service> <usb-port>}"
-port="${2:?usage: handoff/rx888 <new-service> <usb-port>}"
+to="${1:?usage: handoff/rx888 <new-service> <device-id>}"
+id="${2:?usage: handoff/rx888 <new-service> <device-id>}"
 BOOT_UNIT="rx888_boot.service"
 
-pid_of_port() { cat "${SDR_SYSFS_USB}/${port}/idProduct" 2>/dev/null; }
+# Product id (00f1 firmware / 00f3 bootloader) of the device with this id,
+# empty while it's off the bus during re-enumeration.
+pid_of_id() { sdr_find_id "$id" | awk -F'|' '{split($2, v, ":"); print v[2]}'; }
 
-wait_for_pid()
+wait_for_bootloader()
 {
-    local want="$1" i
-    for (( i = 0; i < 15; i++ )); do
-        [[ "$(pid_of_port)" == "$want" ]] && return 0
+    local i
+    # RX888_HANDOFF_WAIT: seconds to wait for re-enumeration (tests shorten it).
+    for (( i = 0; i < ${RX888_HANDOFF_WAIT:-15}; i++ )); do
+        [[ "$(pid_of_id)" == "00f3" ]] && return 0
         sleep 1
     done
     return 1
@@ -68,13 +74,13 @@ if systemctl list-unit-files "$BOOT_UNIT" --no-legend 2>/dev/null | grep -q .; t
 fi
 
 # 2. Reset to bootloader
-if [[ "$(pid_of_port)" != "00f1" ]]; then
+if [[ "$(pid_of_id)" != "00f1" ]]; then
     echo "  rx888: already in bootloader mode"
     exit 0
 fi
 
 if (( $(sdr_count_kind rx888) > 1 )); then
-    sdr_err "more than one RX-888 attached; fx3_cmd can't target port ${port}. Unplug the others, or power-cycle this one by hand."
+    sdr_err "more than one RX-888 attached; fx3_cmd can't target ${id}. Unplug the others, or power-cycle this one by hand."
     exit 1
 fi
 
@@ -89,17 +95,17 @@ fi
 echo "  rx888: resetting FX3 to bootloader (RESETFX3)"
 sdr_sudo "$FX3_CMD" reset
 [[ "${SDR_DRY_RUN:-0}" == "1" ]] && exit 0
-if wait_for_pid 00f3; then
+if wait_for_bootloader; then
     echo "  rx888: in bootloader mode (04b4:00f3)"
     exit 0
 fi
 
 echo "  rx888: RESETFX3 didn't take; trying a host-side USB reset"
 sdr_sudo "$FX3_CMD" usbreset
-if wait_for_pid 00f3; then
+if wait_for_bootloader; then
     echo "  rx888: in bootloader mode (04b4:00f3)"
     exit 0
 fi
 
-sdr_err "the RX-888 on port ${port} is still running firmware; unplug it for ~15 s, plug it back in, and rerun"
+sdr_err "the RX-888 (${id}) is still running firmware; unplug it for ~15 s, plug it back in, and rerun"
 exit 1

@@ -35,8 +35,18 @@ mkdir -p "$H/bin" "$H/units" "$H/sys" "$H/radio" "$H/default"
 mkdev() { local d="$H/sys/$1"; mkdir -p "$d"; echo "$2" >"$d/idVendor"; echo "$3" >"$d/idProduct"; echo "$4" >"$d/busnum"; echo "$5" >"$d/devnum"; echo "$6" >"$d/serial"; }
 mkdev 1-3 0bda 2838 1 5 00000101
 mkdev 3-2 1d50 6089 3 2 0000000000000000a06063c82b6f0f1b
-mkdev 4-4 04b4 00f1 4 2 0009090703432E0F
 HACKRF=0000000000000000a06063c82b6f0f1b
+# One physical USB 3 socket: port 4 on SuperSpeed bus 4, with its USB 2
+# peer, port 4 on bus 3. The RX-888 sits on bus 4 with firmware loaded and
+# reappears on bus 3 in its (USB 2) bootloader -- as on real hardware.
+for b in 3 4; do mkdir -p "$H/sys/usb$b/$b-0:1.0/usb$b-port4"; done
+echo 480 >"$H/sys/usb3/speed"; echo 5000 >"$H/sys/usb4/speed"
+ln -s ../../../usb3/3-0:1.0/usb3-port4 "$H/sys/usb4/4-0:1.0/usb4-port4/peer"
+ln -s ../../../usb4/4-0:1.0/usb4-port4 "$H/sys/usb3/3-0:1.0/usb3-port4/peer"
+rx888_firmware()   { rm -rf "$H/sys/3-4" "$H/sys/4-4"; mkdev 4-4 04b4 00f1 4 2 0009090703432E0F; }
+rx888_bootloader() { rm -rf "$H/sys/3-4" "$H/sys/4-4"; mkdev 3-4 04b4 00f3 3 8 0000000004BE; }
+rx888_firmware
+RX=port:3-4
 
 cat >"$H/bin/sudo" <<'EOF'
 #!/bin/bash
@@ -49,7 +59,12 @@ exit 0
 EOF
 cat >"$H/bin/fx3_cmd" <<'EOF'
 #!/bin/bash
-[ "$1" = reset ] && echo 00f3 >"$HARNESS/sys/4-4/idProduct"; exit 0
+# RESETFX3: the device drops off USB 3 and re-enumerates on the USB 2 peer.
+if [ "$1" = reset ] && [ -d "$HARNESS/sys/4-4" ]; then
+    rm -rf "$HARNESS/sys/4-4"; d="$HARNESS/sys/3-4"; mkdir -p "$d"
+    echo 04b4 >"$d/idVendor"; echo 00f3 >"$d/idProduct"; echo 3 >"$d/busnum"; echo 8 >"$d/devnum"; echo 0000000004BE >"$d/serial"
+fi
+exit 0
 EOF
 cat >"$H/bin/systemctl" <<'EOF'
 #!/bin/bash
@@ -97,7 +112,7 @@ A="$REPO/scripts/sdr-assign"
 echo "1. HackRF from OpenWebRX+ to radiod (first run adopts existing claims)"
 "$A" -y hackrf radiod >/dev/null 2>&1
 check "record: hackrf -> radiod hackrf-aprs" record_is "hackrf $HACKRF radiod hackrf-aprs"
-check "record: rx888 adopted by openwebrx"   record_is "rx888 port:4-4 openwebrx -"
+check "record: rx888 adopted by openwebrx"   record_is "rx888 $RX openwebrx -"
 check "radiod@hackrf-aprs running"           unit_is radiod@hackrf-aprs.service "enabled active"
 check "mission pinned to HackRF serial"      grep -qx "serial = $HACKRF" "$H/radio/radiod@hackrf-aprs.conf"
 check "OpenWebRX+ HackRF entry disabled"     owrx_off hackrf
@@ -105,7 +120,8 @@ check "OpenWebRX+ still running for RX-888"  unit_is openwebrx.service "enabled 
 
 echo "2. RX-888 from OpenWebRX+ to radiod (firmware handoff)"
 "$A" -y rx888 radiod:rx888-wwv >/dev/null 2>&1
-check "RX-888 reset to bootloader (00f3)"    grep -qx 00f3 "$H/sys/4-4/idProduct"
+check "RX-888 reset, now on USB 2 bus (3-4)" grep -qx 00f3 "$H/sys/3-4/idProduct"
+check "record keeps the same RX-888 id"      record_is "rx888 $RX radiod rx888-wwv"
 check "rx888_boot unmasked for radiod"       unit_is rx888_boot.service "disabled inactive"
 check "radiod@rx888-wwv running"             unit_is radiod@rx888-wwv.service "enabled active"
 check "OpenWebRX+ stopped (nothing left)"    unit_is openwebrx.service "disabled inactive"
@@ -120,12 +136,14 @@ check "OpenWebRX+ RTL-SDR entry created"     owrx_on rtl_sdr
 check "OpenWebRX+ running"                   unit_is openwebrx.service "enabled active"
 
 echo "4. RX-888 back to OpenWebRX+ (firmware loaded again)"
-echo 00f1 >"$H/sys/4-4/idProduct"
+rx888_firmware
 "$A" -y rx888 openwebrx >/dev/null 2>&1
 check "rx888_boot masked for OpenWebRX+"     unit_is rx888_boot.service "masked inactive"
-check "RX-888 reset to bootloader"           grep -qx 00f3 "$H/sys/4-4/idProduct"
+check "RX-888 reset to bootloader"           grep -qx 00f3 "$H/sys/3-4/idProduct"
 check "radiod@rx888-wwv stopped"             unit_is radiod@rx888-wwv.service "disabled inactive"
-check "record: rx888 -> openwebrx"           record_is "rx888 port:4-4 openwebrx -"
+check "record: rx888 -> openwebrx"           record_is "rx888 $RX openwebrx -"
+check "one RX-888 in the record"             bash -c "[ \$(grep -c '^rx888 ' '$H/assignments') = 1 ]"
+check "one RX-888 entry enabled in OpenWebRX+" python3 -c "import json,sys; d=json.load(open('$H/owrx.json')); sys.exit(0 if sum(1 for v in d['sdrs'].values() if v['type']=='sddc_soapy' and v.get('enabled',True))==1 else 1)"
 
 echo "5. Whole-host guard (SDRangel server)"
 check "refused without --force"              bash -c "! '$A' -y hackrf sdrangelsrv"
@@ -136,6 +154,19 @@ check "others refused while it runs"         bash -c "! '$A' -y rtlsdr radiod:rt
 "$A" -y hackrf radiod >/dev/null 2>&1
 check "moving its only device away is allowed" record_is "hackrf $HACKRF radiod hackrf-aprs"
 check "sdrangelsrv stopped"                  unit_is sdrangelsrv.service "disabled inactive"
+
+echo "5b. Failed handoff leaves the record truthful"
+rx888_firmware
+cat >"$H/bin/fx3_cmd" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+# fx3_cmd that does nothing: the RX-888 never leaves firmware mode.
+RX888_HANDOFF_WAIT=1 "$A" -y rx888 radiod:rx888-wwv >/dev/null 2>&1; rc=$?
+check "handoff failure is reported"          test "$rc" -ne 0
+check "device recorded as unassigned"        bash -c "! grep -q '^rx888 ' '$H/assignments'"
+check "previous owner was released"          python3 -c "import json,sys; d=json.load(open('$H/owrx.json')); sys.exit(1 if any(v['type']=='sddc_soapy' and v.get('enabled',True) for v in d['sdrs'].values()) else 0)"
+rx888_bootloader
 
 echo "6. Invalid requests"
 check "rtltcp can't take an RX-888"          bash -c "! '$A' -y rx888 rtltcp"
