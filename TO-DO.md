@@ -59,8 +59,9 @@
   at 64.8 Msps over USB 3. `SIGedge assign rx888 openwebrx` stopped radiod,
   masked `rx888_boot`, and `RESETFX3` put the FX3 straight into its
   bootloader (`04b4:00f3`) with no USB-reset fallback. OpenWebRX+ reused its
-  original RX-888 entry. The RX-888 now moves between radiod and OpenWebRX+
-  without being unplugged.
+  original RX-888 entry, loaded its own firmware over ka9q's and streamed
+  WWV. The RX-888 now moves between radiod and OpenWebRX+ without being
+  unplugged.
 
 - [x] **radiod's `ttl == 0; iface ... ignored` message, 2026-10-03.** Not a
   config problem. radiod (ka9q-radio `2ecfe43`, `src/radio.c`) always
