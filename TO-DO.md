@@ -2,12 +2,13 @@
 
 ## Open
 
-- [ ] **Confirm `RESETFX3` works under ka9q-radio's RX-888 firmware.** The
-  handoff (`scripts/handoff/rx888`) resets the FX3 with `fx3_cmd reset`.
-  Confirmed with RX888MK2-Soapy's firmware (see Done). Still unchecked: the
-  firmware ka9q-radio's `rx888_boot` loads. Needs ka9q-radio installed: assign
-  the RX-888 to `radiod`, then to `openwebrx`, and check it comes back as
-  `04b4:00f3` without being unplugged.
+- [ ] **radiod ignores the mission's `ttl = 1`.** With
+  `/etc/radio/radiod@rx888-wwv.conf` from `config/radiod@rx888-wwv.conf`
+  (`[global]` `ttl = 1`, `iface = enp1s0f0`), radiod (ka9q-radio
+  `2ecfe43`) logged `ttl == 0; iface enp1s0f0 ignored` on sigedge-mac, so
+  its multicast streams likely don't leave the host. Check which section
+  and key this ka9q-radio revision reads TTL from, and fix the three
+  `config/radiod@*.conf` templates.
 
 - [ ] **`pkg_ka9q-radio install` probes hardware.** Its "Detected SDR / USB
   hardware" step runs `hackrf_info`, which opens the HackRF -- seen on
@@ -57,3 +58,14 @@
   the RX-888 to its bootloader with no fallback and no error, `assign rx888
   openwebrx` reused the original entry (gain kept), the id stayed `port:3-4`
   across both buses, and OpenWebRX+ reloaded its firmware and streamed.
+
+- [x] **`RESETFX3` under ka9q-radio's firmware, 2026-10-03.** On
+  sigedge-mac, with ka9q-radio installed: `SIGedge assign rx888
+  radiod:rx888-wwv` unmasked `rx888_boot`, reset the RX-888, and
+  `rx888_boot` reloaded ka9q's firmware (2.3) so fast that the handoff only
+  saw the re-enumeration (the case fixed in `7b7aaa1`). radiod then streamed
+  at 64.8 Msps over USB 3. `SIGedge assign rx888 openwebrx` stopped radiod,
+  masked `rx888_boot`, and `RESETFX3` put the FX3 straight into its
+  bootloader (`04b4:00f3`) with no USB-reset fallback. OpenWebRX+ reused its
+  original RX-888 entry. The RX-888 now moves between radiod and OpenWebRX+
+  without being unplugged.
