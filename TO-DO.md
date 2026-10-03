@@ -2,11 +2,7 @@
 
 ## Open
 
-- [ ] **`pkg_ka9q-radio install` probes hardware.** Its "Detected SDR / USB
-  hardware" step runs `hackrf_info`, which opens the HackRF -- seen on
-  sigedge-mac with the HackRF assigned to OpenWebRX+. Harmless with nobody
-  listening, but it can interrupt a device in use by another owner. Skip the
-  probe, or limit it to devices not held by anything (`sdr_holders`).
+(nothing open)
 
 ## Done
 
@@ -71,3 +67,10 @@
   1` does reach the channels (`loadpreset(&Template, Configtable, GLOBAL)`),
   and radiod advertised the WWV data stream as `TTL=1`. No template change
   needed.
+
+- [x] **Install scripts no longer open devices in use, 2026-10-03.**
+  `pkg_ka9q-radio`'s hardware report ran `hackrf_info` and `rtl_test -t`,
+  opening each device; it now shows `device-inventory.sh`, which reads
+  sysfs only. `pkg_rx888 install` ran `fw_test.sh`, which uploads firmware,
+  on any attached RX-888; it now skips that (`RX888_VALIDATION=
+  skipped-in-use`) when the RX-888 is assigned to a service or held open.

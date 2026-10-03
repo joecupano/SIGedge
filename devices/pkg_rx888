@@ -23,7 +23,9 @@
 ###
 ### Optional parent environment:
 ###     RX888_FW_REF         Git branch/tag/commit; default: main
-###     RX888_VALIDATE       1=validate attached hardware on install/build; default: 1
+###     RX888_VALIDATE       1=validate attached hardware on install/build; default: 1.
+###                          Skipped when the RX-888 is assigned to a service
+###                          or held open (its firmware would be replaced).
 ###
 ### Notes:
 ###   - This script does not change shell options because it is sourced.
@@ -35,6 +37,32 @@
 ###
 
 # Local Variables required by script
+
+# Is the attached RX-888 in use -- assigned to a service (scripts/sdr-assign)
+# or held open by any process? fw_test.sh uploads its own firmware, which
+# would replace the firmware the current owner loaded. Runs in a subshell so
+# the shared library doesn't leak into the parent installer. Prints who has
+# it and returns 0 when in use.
+_sigedge_rx888_in_use() {
+    (
+        local lib="${SIGEDGE_SCRIPTS:-$(dirname "${BASH_SOURCE[0]}")/../scripts}/lib/sdr_common.sh"
+        # shellcheck source=../scripts/lib/sdr_common.sh
+        source "$lib" 2>/dev/null || exit 1
+        line="$(sdr_scan | awk -F'|' '$1=="rx888"' | head -1)"
+        [[ -n "$line" ]] || exit 1
+        IFS='|' read -r _ _ _ _ _ node _ id _ <<<"$line"
+        if owner="$(sdr_assignment_get "$id")"; then
+            echo "assigned to ${owner% -}"
+            exit 0
+        fi
+        holders="$(sdr_holders "$node" 2>/dev/null | awk -F'|' '{print $3}' | sort -u | paste -sd' ')"
+        if [[ -n "$holders" ]]; then
+            echo "held by ${holders}"
+            exit 0
+        fi
+        exit 1
+    )
+}
 
 _sigedge_rx888_main() {
     local ACTION="${1:-}"
@@ -61,6 +89,7 @@ _sigedge_rx888_main() {
     local FW_COMMIT=""
     local FW_SHA256=""
     local VALIDATION_STATUS="not-run"
+    local IN_USE=""
     local PKGROOT=""
     local DEBFILE=""
     local ARCH=""
@@ -179,7 +208,10 @@ _sigedge_rx888_main() {
             FW_COMMIT="$(git -C "${SRC_DIR}" rev-parse HEAD)" || return 1
             FW_SHA256="$(sha256sum "${FW_BUILD}" | awk '{print $1}')" || return 1
 
-            if [[ "${VALIDATE}" == "1" ]]; then
+            if [[ "${VALIDATE}" == "1" ]] && IN_USE="$(_sigedge_rx888_in_use)"; then
+                VALIDATION_STATUS="skipped-in-use"
+                echo "NOTE: RX-888 ${IN_USE}; skipped hardware validation (fw_test.sh would replace its firmware)." >&2
+            elif [[ "${VALIDATE}" == "1" ]]; then
                 if lsusb | grep -Eiq '04b4:(00f1|00f3|8613)'; then
                     if [[ -x "${SRC_DIR}/tests/fw_test.sh" ]]; then
                         (
@@ -377,7 +409,7 @@ if _sigedge_rx888_main "$@"; then
 else
     _sigedge_rx888_rc=$?
 fi
-unset -f _sigedge_rx888_main
+unset -f _sigedge_rx888_main _sigedge_rx888_in_use
 
 # When sourced, return to the parent. Direct execution remains usable for testing.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then

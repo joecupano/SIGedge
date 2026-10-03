@@ -137,15 +137,15 @@ ka9q_show_hardware()
     echo
     lsusb -t || true
 
-    if command -v hackrf_info >/dev/null 2>&1; then
-        hackrf_info 2>/dev/null || true
-    fi
-
-    if command -v rtl_test >/dev/null 2>&1; then
-        timeout 5 rtl_test -t 2>/dev/null || true
-    fi
-
-    if lsusb | grep -Eiq '04b4:(00f1|00f3|8613)'; then
+    # Read-only from here: hackrf_info and rtl_test used to open each device
+    # to report on it, interrupting whichever service owned it at the time.
+    # device-inventory.sh lists the same devices from sysfs, with their
+    # assignments, without opening anything.
+    local inventory="${SIGEDGE_SCRIPTS:-$(dirname "${BASH_SOURCE[0]}")/../scripts}/device-inventory.sh"
+    echo
+    if [[ -x "$inventory" ]]; then
+        "$inventory" || true
+    elif lsusb | grep -Eiq '04b4:(00f1|00f3|8613)'; then
         echo "RX-888 / Cypress FX3 USB device detected"
     fi
 }
