@@ -39,6 +39,8 @@
   adopted OpenWebRX+'s devices, and moved the HackRF out of OpenWebRX+ and
   back. Its entry returned pinned to its serial with all three profiles, the
   RX-888's gain and waterfall settings and all other settings were
-  unchanged, and `settings.json` stayed owned by `openwebrx`. Not exercised:
+  unchanged, and `settings.json` stayed owned by `openwebrx`. Both radios
+  streamed in the web UI afterwards (HackRF on SIGedge's SoapyHackRF, RX-888
+  through the `sdr` group). Not exercised:
   `radiod` and `rtltcp` adapters (neither installed here) and the RX-888
   handoff (see above).
