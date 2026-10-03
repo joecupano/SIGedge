@@ -52,6 +52,7 @@ declare -gA SDR_LABEL=(
 )
 
 # Every assignable service. Each has scripts/adapters/<name>.
+# shellcheck disable=SC2034  # used by the scripts that source this file
 SDR_SERVICES=(radiod openwebrx rtltcp sdrangelsrv soapysdrsrv)
 
 

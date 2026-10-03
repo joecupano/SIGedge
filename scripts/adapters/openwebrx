@@ -11,6 +11,8 @@
 
 OWRX_UNIT="openwebrx.service"
 OWRX_SETTINGS="${OWRX_SETTINGS:-/var/lib/openwebrx/settings.json}"
+# SDR_ADAPTER_DIR comes from lib/sdr_common.sh, which always loads adapters.
+# shellcheck disable=SC2154
 OWRX_HELPER="${SDR_ADAPTER_DIR}/owrx_settings.py"
 
 adapter_kinds()      { echo "rx888 hackrf rtlsdr"; }

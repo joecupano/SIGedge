@@ -25,11 +25,6 @@
   ka9q-radio installed: assign the RX-888 to `radiod`, then to `openwebrx`,
   and check it re-enumerates as `04b4:00f3` without being unplugged.
 
-- [ ] **Run shellcheck over the new scripts** (`scripts/sdr-assign`,
-  `sdr-access`, `driver-check`, `service_toggle`, `handoff/rx888`,
-  `lib/sdr_common.sh`, `adapters/*`). It isn't installed on sigedge-mac, so
-  they've only had `bash -n` and the regression test.
-
 ## Done
 
 - [x] **Validate per-device assignment on real hardware (sigedge-mac),
@@ -44,3 +39,12 @@
   through the `sdr` group). Not exercised:
   `radiod` and `rtltcp` adapters (neither installed here) and the RX-888
   handoff (see above).
+
+- [x] **shellcheck, 2026-10-02.** shellcheck 0.10.0 over `sdr-assign`,
+  `sdr-access`, `driver-check`, `service_toggle`, `device-inventory.sh`,
+  `handoff/rx888`, `lib/sdr_common.sh`, `adapters/*` and
+  `tests/sdr-assign-test.sh`: clean at the default checks after removing
+  two dead tables from `device-inventory.sh`. The optional checks report
+  only style preferences the rest of SIGedge doesn't follow either
+  (SC2250 `${var}` braces, SC2312 masked return values, SC2249 default
+  `case` branches).

@@ -98,31 +98,8 @@ RTLTCP_UNIT="rtltcp.service"
 # EnvironmentFile=.
 RTLTCP_ENV_FILE="/etc/default/rtltcp"
 
-# Known VID:PID pairs. RX-888 has two: 00f1 once firmware is loaded,
-# 00f3 while still sitting in Cypress FX3 DFU/bootloader mode (see
-# README.md/KA9Q-DEPLOYMENT.md's DFU-mode gotcha) -- shown as a distinct,
-# flagged state since a device stuck there needs a firmware upload
-# before radiod/rx888_stream can use it, not a serial pin.
-declare -A DEVICE_LABELS=(
-    ["0bda:2838"]="RTL-SDR (RTL2838)"
-    ["0bda:2832"]="RTL-SDR (RTL2832U)"
-    ["1d50:6089"]="HackRF One"
-    ["04b4:00f1"]="RX-888 MkII (firmware loaded)"
-    ["04b4:00f3"]="RX-888 MkII (DFU mode -- needs firmware upload)"
-)
-
-# Groups the VID:PID table above into the coarser "kind" that radiod's
-# `hardware =` value and RTL-TCP's serial claims both refer to, so an
-# attached unit can be cross-matched against a claimed serial regardless
-# of which exact VID:PID (loaded vs DFU, RTL2838 vs RTL2832U) it currently
-# shows.
-declare -A DEVICE_KIND=(
-    ["0bda:2838"]="rtlsdr"
-    ["0bda:2832"]="rtlsdr"
-    ["1d50:6089"]="hackrf"
-    ["04b4:00f1"]="rx888"
-    ["04b4:00f3"]="rx888"
-)
+# Known devices (VID:PID -> kind and label) live in lib/sdr_common.sh
+# (SDR_KIND, SDR_LABEL), shared with scripts/sdr-assign.
 
 
 ### ---------------------------------------------------------------------
