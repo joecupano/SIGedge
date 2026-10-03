@@ -479,6 +479,15 @@ If something other than the assigned owner holds the device, re-run the assignme
 
 A known culprit worth checking specifically: `soapyremote-server.service` should be disabled and stopped after a normal `SIGedge setup`, but if it was ever enabled by hand, or by a checkout predating that fix, it exposes every SoapySDR-visible device to the network and will fight `radiod` for the same hardware. Check `systemctl is-active soapyremote-server.service`; see [README.md](README.md#direct-sdr-use-including-soapysdr) for the intended opt-in/opt-out flow.
 
+### radiod logs `ttl == 0; iface <name> ignored`
+
+Expected, and harmless: radiod always creates a second, loopback-only
+output socket for channels configured with TTL 0, and that socket ignores
+`iface`, which is what the message says. The channels in SIGedge's
+missions use `[global] ttl` (1), on the configured interface. To confirm
+for a given mission, look for `TTL=1` on the `_rtp._udp` line radiod logs
+when it advertises its data stream.
+
 ### Discovery works on the wrong interface
 
 Regenerate the configuration with an explicit `KA9Q_IFACE`, then restart the selected receiver. Check routes and multicast membership before changing firewall rules.

@@ -2,14 +2,6 @@
 
 ## Open
 
-- [ ] **radiod ignores the mission's `ttl = 1`.** With
-  `/etc/radio/radiod@rx888-wwv.conf` from `config/radiod@rx888-wwv.conf`
-  (`[global]` `ttl = 1`, `iface = enp1s0f0`), radiod (ka9q-radio
-  `2ecfe43`) logged `ttl == 0; iface enp1s0f0 ignored` on sigedge-mac, so
-  its multicast streams likely don't leave the host. Check which section
-  and key this ka9q-radio revision reads TTL from, and fix the three
-  `config/radiod@*.conf` templates.
-
 - [ ] **`pkg_ka9q-radio install` probes hardware.** Its "Detected SDR / USB
   hardware" step runs `hackrf_info`, which opens the HackRF -- seen on
   sigedge-mac with the HackRF assigned to OpenWebRX+. Harmless with nobody
@@ -69,3 +61,12 @@
   bootloader (`04b4:00f3`) with no USB-reset fallback. OpenWebRX+ reused its
   original RX-888 entry. The RX-888 now moves between radiod and OpenWebRX+
   without being unplugged.
+
+- [x] **radiod's `ttl == 0; iface ... ignored` message, 2026-10-03.** Not a
+  config problem. radiod (ka9q-radio `2ecfe43`, `src/radio.c`) always
+  creates two output sockets, one with TTL 1 on the configured `iface` and a
+  loopback-only TTL 0 one for channels that ask for it, and creating the
+  second prints this message on every start. The mission's `[global] ttl =
+  1` does reach the channels (`loadpreset(&Template, Configtable, GLOBAL)`),
+  and radiod advertised the WWV data stream as `TTL=1`. No template change
+  needed.
