@@ -422,10 +422,12 @@ cfg_main()
 
     if [[ "$KA9Q_START_SERVICES" != "1" ]]; then
         echo
-        echo "To start a configured receiver:"
-        echo "  sudo systemctl start $RX888_SERVICE"
-        echo "  sudo systemctl start $HACKRF_SERVICE"
-        echo "  sudo systemctl start $RTLSDR_SERVICE"
+        # Starting a mission is assigning its device to it: sdr-assign
+        # releases the device's current owner and runs its handoff first.
+        echo "To start a configured receiver, assign its device to the mission:"
+        echo "  SIGedge assign rx888 radiod:${RX888_SERVICE#radiod@}" | sed 's/\.service$//'
+        echo "  SIGedge assign hackrf radiod:${HACKRF_SERVICE#radiod@}" | sed 's/\.service$//'
+        echo "  SIGedge assign rtlsdr radiod:${RTLSDR_SERVICE#radiod@}" | sed 's/\.service$//'
     fi
 
     return 0

@@ -9,6 +9,12 @@
   the RX-888 to `radiod`, then to `openwebrx`, and check it comes back as
   `04b4:00f3` without being unplugged.
 
+- [ ] **`pkg_ka9q-radio install` probes hardware.** Its "Detected SDR / USB
+  hardware" step runs `hackrf_info`, which opens the HackRF -- seen on
+  sigedge-mac with the HackRF assigned to OpenWebRX+. Harmless with nobody
+  listening, but it can interrupt a device in use by another owner. Skip the
+  probe, or limit it to devices not held by anything (`sdr_holders`).
+
 ## Done
 
 - [x] **Validate per-device assignment on real hardware (sigedge-mac),
